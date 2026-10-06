@@ -34,9 +34,9 @@ jobs:
         with:
           data-token: ${{ secrets.DATA_TOKEN }}
           data-repo: ${{ vars.DATA_REPO }}
+          browser: "true"
       - if: env.JARVIS_LLM == 'claude-code'
         run: npm install -g @anthropic-ai/claude-code --no-audit --no-fund
-          browser: "true"
       - run: npm run -s jarvis -- reviews
       - run: |
           args=()

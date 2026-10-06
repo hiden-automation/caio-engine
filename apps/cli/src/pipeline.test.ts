@@ -177,3 +177,16 @@ describe("gc", () => {
     expect([...keep].sort()).toEqual(["m/recente/1.jpg", "m/vivo/1.jpg"]);
   });
 });
+
+describe("produção só com Instagram", () => {
+  it("não sorteia formato que nenhuma rede ligada aceita", { timeout: 120_000 }, async () => {
+    const ctx = { ...(await makeCtx(new Date("2026-10-06T12:00:00Z"), [])), platforms: ["instagram"] as Platform[] };
+    await produce(ctx, { count: 8 });
+    const pkgs = await ctx.store.listPackages();
+    expect(pkgs.length).toBe(8);
+    for (const p of pkgs) {
+      expect(p.format).not.toBe("text");
+      expect(p.variants.every((v) => v.platform === "instagram")).toBe(true);
+    }
+  });
+});

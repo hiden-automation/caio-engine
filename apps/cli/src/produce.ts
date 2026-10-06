@@ -271,7 +271,9 @@ export async function produce(ctx: Ctx, opts: ProduceOptions = {}): Promise<{ cr
       const rng = mulberry32(ctx.now.getTime() % 2 ** 31);
       const n = opts.count ?? Math.ceil(strategy.packagesPerDay / 2);
       const pool = [...ideas].sort((a, b) => b.hypeScore - a.hypeScore);
-      slots = allocateDay(strategy, rng, IMPLEMENTED_FORMATS, n).map((slot) => {
+      // Só formatos que alguma rede ligada aceita (ex.: só Instagram = sem "text").
+      const available = IMPLEMENTED_FORMATS.filter((f) => ctx.platforms.some((p) => KIND_BY_FORMAT[f]?.[p]));
+      slots = allocateDay(strategy, rng, available, n).map((slot) => {
         if (slot.format === "algoviz") return { slot };
         const i = pool.findIndex((x) => x.pillar === slot.pillar || slot.exploration);
         return { slot, idea: i >= 0 ? pool.splice(i, 1)[0] : undefined };

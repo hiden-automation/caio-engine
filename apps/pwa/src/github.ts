@@ -36,7 +36,7 @@ export class GitHubError extends Error {
 }
 
 async function gh(conn: Conn, path: string, init: RequestInit = {}, accept = "application/vnd.github+json"): Promise<Response> {
-  const res = await fetch(`https://api.github.com/repos/${conn.owner}/${conn.repo}/${path}`, {
+  const res = await fetch(`https://api.github.com/repos/${conn.owner}/${conn.repo}${path ? `/${path}` : ""}`, {
     ...init,
     headers: {
       authorization: `Bearer ${conn.token}`,

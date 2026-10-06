@@ -1,0 +1,34 @@
+name: limpeza
+# Domingo: remove artes antigas e recria a branch previews sem histórico (repo não incha).
+on:
+  schedule:
+    - cron: "0 7 * * 0"
+  workflow_dispatch:
+concurrency:
+  group: jarvis-data
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  gc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATA_DIR: data
+      PREVIEWS_DIR: previews
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          data-token: ${{ secrets.DATA_TOKEN }}
+          data-repo: ${{ vars.DATA_REPO }}
+      - run: npm run -s jarvis -- gc
+      - name: recriar previews como commit órfão
+        run: |
+          cd previews
+          url=$(git remote get-url origin)
+          rm -rf .git
+          git init -q -b previews
+          git add -A
+          git commit -q -m "jarvis: previews compactada" --allow-empty
+          git push -q --force "$url" previews

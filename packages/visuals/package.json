@@ -1,0 +1,13 @@
+{
+  "name": "@jarvis/visuals",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@jarvis/core": "*",
+    "@jarvis/sims": "*",
+    "playwright": "^1.63.0",
+    "zod": "^4.6.5"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "@jarvis/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@jarvis/core": "*",
+    "@jarvis/llm": "*",
+    "@jarvis/optimizer": "*",
+    "@jarvis/publishers": "*",
+    "@jarvis/sims": "*",
+    "@jarvis/trends": "*",
+    "@jarvis/visuals": "*",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.131.0"
+  }
+}

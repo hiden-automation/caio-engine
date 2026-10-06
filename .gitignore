@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+out/
+cdn-out/
+data/
+previews/
+*.log
+.DS_Store
+apps/pwa/demo/

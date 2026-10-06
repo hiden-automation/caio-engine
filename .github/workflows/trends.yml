@@ -1,0 +1,39 @@
+name: tendencias
+# De hora em hora: coleta → hype score → triagem → ideias. Hype alto = via expressa 🔥.
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+concurrency:
+  group: jarvis-data
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  trends:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATA_DIR: data
+      PREVIEWS_DIR: previews
+      JARVIS_PLATFORMS: ${{ vars.JARVIS_PLATFORMS }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          data-token: ${{ secrets.DATA_TOKEN }}
+          data-repo: ${{ vars.DATA_REPO }}
+      - id: hunt
+        run: npm run -s jarvis -- trends
+      # Via expressa: produz na hora o pacote da tendência (aprovar em até 6h).
+      - if: steps.hunt.outputs.express_ids != ''
+        run: npx playwright install --with-deps chromium
+      - if: steps.hunt.outputs.express_ids != ''
+        run: |
+          IFS=',' read -ra ids <<< "${{ steps.hunt.outputs.express_ids }}"
+          for id in "${ids[@]}"; do npm run -s jarvis -- produce --idea "$id" || true; done
+      - if: always()
+        run: bash scripts/ci/save.sh "tendências"

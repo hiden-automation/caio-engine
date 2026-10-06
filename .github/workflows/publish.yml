@@ -1,0 +1,48 @@
+name: publicar
+# A cada 15 min e logo após uma decisão no PWA (repository_dispatch do caio-data).
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  repository_dispatch:
+    types: [review]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: só simular (1) ou publicar de verdade (0)
+        default: "0"
+concurrency:
+  group: jarvis-data
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATA_DIR: data
+      PREVIEWS_DIR: previews
+      CDN_DIR: cdn-out
+      JARVIS_DRY_RUN: ${{ inputs.dry_run || '0' }}
+      CDN_BASE_URL: ${{ vars.CDN_BASE_URL }}
+      CDN_PUSH_URL: https://x-access-token:${{ secrets.DATA_TOKEN }}@github.com/${{ vars.CDN_REPO }}.git
+      IG_USER_ID: ${{ secrets.IG_USER_ID }}
+      IG_TOKEN: ${{ secrets.IG_TOKEN }}
+      THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+      THREADS_TOKEN: ${{ secrets.THREADS_TOKEN }}
+      LINKEDIN_PERSON_URN: ${{ secrets.LINKEDIN_PERSON_URN }}
+      LINKEDIN_TOKEN: ${{ secrets.LINKEDIN_TOKEN }}
+      X_API_KEY: ${{ secrets.X_API_KEY }}
+      X_API_SECRET: ${{ secrets.X_API_SECRET }}
+      X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+      X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          data-token: ${{ secrets.DATA_TOKEN }}
+          data-repo: ${{ vars.DATA_REPO }}
+      - run: npm run -s jarvis -- reviews
+      - run: npm run -s jarvis -- publish
+      - if: always()
+        run: bash scripts/ci/save.sh "publicação"

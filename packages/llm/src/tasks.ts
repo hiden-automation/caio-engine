@@ -1,0 +1,117 @@
+import type { BrandRules, ContentPackage, Format, HookType, Idea, Pillar, Platform, Signal } from "@jarvis/core";
+import type { Llm } from "./client.ts";
+import { JudgeOutput, TriageOutput, WriterOutput } from "./outputs.ts";
+import { FORMAT_SPECS, HOOK_GUIDE, KIND_BY_FORMAT } from "./prompts.ts";
+
+export interface BrandContext {
+  /** Saída de stableSystem(): idêntica entre chamadas para aproveitar o cache. */
+  system: string;
+  rules: BrandRules;
+}
+
+const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+
+export async function triageSignals(llm: Llm, brand: BrandContext, signals: Signal[]): Promise<TriageOutput["items"]> {
+  if (!signals.length) return [];
+  const list = signals
+    .map((s) => `- id=${s.id} | fonte=${s.collector} | ${s.title}${s.summary ? ` (${s.summary})` : ""}`)
+    .join("\n");
+  const out = await llm.structured({
+    role: "triage",
+    stableSystem: brand.system,
+    schema: TriageOutput,
+    user: `Tarefa: triagem de tendências. Para CADA sinal abaixo, avalie se existe um ângulo forte e seguro para o Caio (computação/IA/automação, geek × negócios/computação, bastidores de empreendedor, o próprio JARVIS, ou liberdade/economia/fé pela lente do empreendedor).
+
+Critérios:
+- pillarFit alto só se o Caio tem algo específico e interessante a dizer (não basta o tema ser popular).
+- risk alto para: tragédias, crimes, fofoca, conteúdo eleitoral direto, temas que exigem reproduzir material protegido, boatos sem fonte.
+- angle: a virada do Caio. Ex.: "filme novo da Marvel" → "a IA do vilão explicada por quem programa IA".
+- suggestedFormat: um de carousel, algoviz, text, story (os que existem hoje).
+
+Sinais:
+${list}`,
+  });
+  return out.items.map((i) => ({
+    ...i,
+    pillarFit: clamp01(i.pillarFit),
+    risk: clamp01(i.risk),
+    saturation: clamp01(i.saturation),
+  }));
+}
+
+export interface WriteRequest {
+  pillar: Pillar;
+  format: Format;
+  hookType: HookType;
+  exploration: boolean;
+  platforms: Platform[];
+  idea?: Idea;
+  recentTopics: string[];
+  /** Dados reais de uma simulação (AlgoViz) que a narração deve citar. */
+  simulationData?: string;
+  /** Pedido de ajuste do Caio ou instrução do juiz da tentativa anterior. */
+  feedback?: string;
+  previous?: ContentPackage;
+}
+
+export async function writePackage(llm: Llm, brand: BrandContext, req: WriteRequest): Promise<WriterOutput> {
+  const kinds = KIND_BY_FORMAT[req.format] ?? {};
+  const platformLines = req.platforms
+    .filter((p) => kinds[p])
+    .map((p) => `- ${p}: kind "${kinds[p]}"`)
+    .join("\n");
+
+  const parts = [
+    `Tarefa: criar um pacote de conteúdo.`,
+    `Pilar: ${req.pillar}`,
+    `Formato: ${req.format}\n${FORMAT_SPECS[req.format] ?? ""}`,
+    `Tipo de gancho pedido: ${req.hookType}${req.exploration ? " (rodada de EXPLORAÇÃO: arrisque um ângulo diferente do usual)" : ""}\n${HOOK_GUIDE}`,
+    `Gere exatamente uma variante para cada plataforma abaixo, com legenda nativa de cada rede:\n${platformLines}`,
+    req.pillar === "geek" ? `Se o tema for Geek × negócios (e não Geek × computação), NÃO gere a variante linkedin.` : "",
+    req.idea
+      ? `Ideia (vinda do radar de tendências):\nTítulo: ${req.idea.title}\nÂngulo: ${req.idea.angle}\nFontes: ${req.idea.sources.map((s) => `${s.title} ${s.url ?? ""} (licença: ${s.license})`).join("; ") || "nenhuma"}`
+      : `Sem ideia pré-definida: escolha um tema forte e atemporal do pilar.`,
+    req.simulationData ? `Dados reais da simulação (cite exatamente estes números):\n${req.simulationData}` : "",
+    req.recentTopics.length ? `Temas publicados recentemente (não repita):\n${req.recentTopics.slice(0, 30).map((t) => `- ${t}`).join("\n")}` : "",
+    req.previous ? `Versão anterior deste pacote (JSON):\n${JSON.stringify({ slides: req.previous.slides, variants: req.previous.variants.map((v) => ({ platform: v.platform, caption: v.caption })) })}` : "",
+    req.feedback ? `AJUSTES OBRIGATÓRIOS nesta versão:\n${req.feedback}` : "",
+    `Em "sources", liste apenas fontes reais recebidas acima (license "livre", "permitido" ou "citacao"); use [] se não houver.`,
+  ];
+  return llm.structured({
+    role: "writer",
+    stableSystem: brand.system,
+    schema: WriterOutput,
+    user: parts.filter(Boolean).join("\n\n"),
+  });
+}
+
+export async function judgePackage(llm: Llm, brand: BrandContext, pkg: ContentPackage): Promise<JudgeOutput> {
+  const payload = {
+    pillar: pkg.pillar,
+    format: pkg.format,
+    hook: pkg.chosenHook,
+    slides: pkg.slides,
+    variants: pkg.variants.map((v) => ({ platform: v.platform, kind: v.kind, caption: v.caption, threadParts: v.threadParts })),
+    sources: pkg.sources,
+  };
+  const out = await llm.structured({
+    role: "judge",
+    stableSystem: brand.system,
+    schema: JudgeOutput,
+    user: `Tarefa: você é o revisor de qualidade (QA) antes do conteúdo chegar ao celular do Caio. Seja exigente.
+
+Avalie:
+1. Violação de qualquer regra imutável → blocking = true.
+2. Afirmações factuais sem fonte em "sources" → blocking = true.
+3. Gancho: o primeiro slide/linha prende em 1 segundo? É específico?
+4. Soa como o Caio (bíblia) e não como texto genérico de IA?
+5. Cada legenda é nativa da sua rede? Erros de português?
+6. Entrega valor real (aprende algo, sente algo, quer salvar/compartilhar)?
+
+score: 0–10. Abaixo de ${brand.rules.minBrandScore} não passa. Em fixInstructions, diga objetivamente o que mudar.
+
+Pacote:
+${JSON.stringify(payload, null, 2)}`,
+  });
+  return { ...out, score: Math.max(0, Math.min(10, out.score)) };
+}

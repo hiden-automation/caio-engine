@@ -1,0 +1,26 @@
+{
+  "name": "caio-engine",
+  "private": true,
+  "type": "module",
+  "description": "JARVIS — o robô que cria, aprova (via PWA) e publica o conteúdo do Caio.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "jarvis": "tsx --env-file-if-exists=.env apps/cli/src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pwa:dev": "npm run dev -w @jarvis/pwa",
+    "pwa:build": "npm run build -w @jarvis/pwa"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

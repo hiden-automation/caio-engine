@@ -1,0 +1,42 @@
+name: produzir
+# 06:00 e 15:00 em São Paulo: roteiro → arte → QA → fila do PWA.
+on:
+  schedule:
+    - cron: "0 9,18 * * *"
+  workflow_dispatch:
+    inputs:
+      count:
+        description: quantos pacotes
+        default: "3"
+      idea:
+        description: id de uma ideia específica (via expressa)
+        default: ""
+concurrency:
+  group: jarvis-data
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  produce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DATA_DIR: data
+      PREVIEWS_DIR: previews
+      JARVIS_PLATFORMS: ${{ vars.JARVIS_PLATFORMS }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          data-token: ${{ secrets.DATA_TOKEN }}
+          data-repo: ${{ vars.DATA_REPO }}
+          browser: "true"
+      - run: npm run -s jarvis -- reviews
+      - run: |
+          args=()
+          [ -n "${{ inputs.count }}" ] && args+=(--count "${{ inputs.count }}")
+          [ -n "${{ inputs.idea }}" ] && args+=(--idea "${{ inputs.idea }}")
+          npm run -s jarvis -- produce "${args[@]}"
+      - if: always()
+        run: bash scripts/ci/save.sh "produção"

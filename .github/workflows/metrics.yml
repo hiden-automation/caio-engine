@@ -1,0 +1,43 @@
+name: metricas-e-otimizador
+# Snapshots de hora em hora; otimizador todo dia às 03:00 de São Paulo.
+on:
+  schedule:
+    - cron: "41 * * * *"
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      optimize:
+        description: rodar o otimizador também
+        type: boolean
+        default: false
+concurrency:
+  group: jarvis-data
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  metrics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATA_DIR: data
+      PREVIEWS_DIR: previews
+      IG_USER_ID: ${{ secrets.IG_USER_ID }}
+      IG_TOKEN: ${{ secrets.IG_TOKEN }}
+      THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+      THREADS_TOKEN: ${{ secrets.THREADS_TOKEN }}
+      X_API_KEY: ${{ secrets.X_API_KEY }}
+      X_API_SECRET: ${{ secrets.X_API_SECRET }}
+      X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+      X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          data-token: ${{ secrets.DATA_TOKEN }}
+          data-repo: ${{ vars.DATA_REPO }}
+      - run: npm run -s jarvis -- snapshot
+      - if: github.event.schedule == '0 6 * * *' || inputs.optimize
+        run: npm run -s jarvis -- optimize
+      - if: always()
+        run: bash scripts/ci/save.sh "métricas"

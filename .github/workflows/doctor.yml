@@ -1,0 +1,53 @@
+name: doctor
+# Toda segunda: checa credenciais e renova os tokens de 60 dias (Instagram, Threads).
+on:
+  schedule:
+    - cron: "0 12 * * 1"
+  workflow_dispatch:
+concurrency:
+  group: jarvis-data
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  doctor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATA_DIR: data
+      PREVIEWS_DIR: previews
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CDN_BASE_URL: ${{ vars.CDN_BASE_URL }}
+      CDN_PUSH_URL: ${{ vars.CDN_REPO && 'configurado' || '' }}
+      IG_USER_ID: ${{ secrets.IG_USER_ID }}
+      IG_TOKEN: ${{ secrets.IG_TOKEN }}
+      THREADS_USER_ID: ${{ secrets.THREADS_USER_ID }}
+      THREADS_TOKEN: ${{ secrets.THREADS_TOKEN }}
+      LINKEDIN_PERSON_URN: ${{ secrets.LINKEDIN_PERSON_URN }}
+      LINKEDIN_TOKEN: ${{ secrets.LINKEDIN_TOKEN }}
+      LINKEDIN_TOKEN_CREATED: ${{ vars.LINKEDIN_TOKEN_CREATED }}
+      X_API_KEY: ${{ secrets.X_API_KEY }}
+      X_API_SECRET: ${{ secrets.X_API_SECRET }}
+      X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+      X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          data-token: ${{ secrets.DATA_TOKEN }}
+          data-repo: ${{ vars.DATA_REPO }}
+      - run: mkdir -p "$RUNNER_TEMP/tokens" && npm run -s jarvis -- doctor --refresh --out "$RUNNER_TEMP/tokens"
+      # Grava os tokens renovados de volta nos Secrets (PAT com "Secrets: write" neste repo).
+      - name: atualizar secrets
+        env:
+          GH_TOKEN: ${{ secrets.SECRETS_ADMIN_TOKEN }}
+        run: |
+          shopt -s nullglob
+          for f in "$RUNNER_TEMP"/tokens/*; do
+            echo "::add-mask::$(cat "$f")"
+            gh secret set "$(basename "$f")" --repo "$GITHUB_REPOSITORY" < "$f"
+            echo "renovado: $(basename "$f")"
+          done
+      - if: always()
+        run: bash scripts/ci/save.sh "doctor"

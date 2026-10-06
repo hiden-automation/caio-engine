@@ -129,9 +129,18 @@ describe("pipeline de ponta a ponta (LLM e redes simuladas)", () => {
     const pubs = Object.fromEntries((["instagram", "linkedin", "x", "threads"] as const).map((p) => [p, new FakePublisher(p)]));
     expect((await publish(ctx, pubs)).published).toBe(0);
 
-    // Dois dias depois: tudo no horário.
-    const later = { ...ctx, now: new Date("2026-10-08T12:00:00Z") };
-    expect((await publish(later, pubs)).published).toBe(3);
+    // Rede ligada só dois dias depois: os atrasados não saem em rajada, voltam para a agenda.
+    const stale = { ...ctx, now: new Date("2026-10-08T12:00:00Z") };
+    expect((await publish(stale, pubs)).published).toBe(0);
+    const moved = (await ctx.store.loadPackage(pkg!.id))!.variants.filter((v) => v.status === "approved");
+    for (const v of moved) expect(new Date(v.scheduledAt!).getTime()).toBeGreaterThan(stale.now.getTime());
+
+    // O publicador roda a cada 15 min: cada um sai no seu novo horário.
+    const times = [...new Set(moved.map((v) => new Date(v.scheduledAt!).getTime()))].sort((a, b) => a - b);
+    let total = 0;
+    for (const t of times) total += (await publish({ ...ctx, now: new Date(t + 60_000) }, pubs)).published;
+    expect(total).toBe(3);
+    const later = { ...ctx, now: new Date(times.at(-1)! + 60_000) };
     expect(pubs.instagram!.calls[0]!.variant.caption).toBe("Legenda editada no celular");
     expect(pubs.linkedin!.calls[0]!.assets[0]!.asset.kind).toBe("pdf");
     expect(pubs.x!.calls).toHaveLength(0);

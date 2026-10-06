@@ -1,8 +1,8 @@
 name: tendencias
-# De hora em hora: coleta → hype score → triagem → ideias. Hype alto = via expressa 🔥.
+# 4×/dia (07h, 11h, 16h, 20h em SP), para poupar a cota da assinatura: coleta → hype score → triagem → ideias. Hype alto = via expressa 🔥.
 on:
   schedule:
-    - cron: "17 * * * *"
+    - cron: "17 10,14,19,23 * * *"
   workflow_dispatch:
 concurrency:
   group: jarvis-data
@@ -17,6 +17,9 @@ jobs:
       DATA_DIR: data
       PREVIEWS_DIR: previews
       JARVIS_PLATFORMS: ${{ vars.JARVIS_PLATFORMS }}
+      # claude-code = assinatura (CLAUDE_CODE_OAUTH_TOKEN); api = paga por token.
+      JARVIS_LLM: ${{ vars.JARVIS_LLM || 'claude-code' }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -26,6 +29,8 @@ jobs:
         with:
           data-token: ${{ secrets.DATA_TOKEN }}
           data-repo: ${{ vars.DATA_REPO }}
+      - if: env.JARVIS_LLM == 'claude-code'
+        run: npm install -g @anthropic-ai/claude-code --no-audit --no-fund
       - id: hunt
         run: npm run -s jarvis -- trends
       # Via expressa: produz na hora o pacote da tendência (aprovar em até 6h).

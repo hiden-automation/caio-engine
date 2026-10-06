@@ -18,7 +18,8 @@ export async function doctor(ctx: Ctx, opts: { refresh?: boolean; outDir?: strin
   const checks: Check[] = [];
   const has = (...keys: string[]) => keys.every((k) => !!env[k]);
 
-  checks.push({ name: "Claude API", ok: has("ANTHROPIC_API_KEY"), detail: "ANTHROPIC_API_KEY" });
+  if (process.env.JARVIS_LLM === "claude-code") checks.push({ name: "Claude (assinatura)", ok: has("CLAUDE_CODE_OAUTH_TOKEN"), detail: "CLAUDE_CODE_OAUTH_TOKEN" });
+  else checks.push({ name: "Claude API", ok: has("ANTHROPIC_API_KEY"), detail: "ANTHROPIC_API_KEY" });
   checks.push({ name: "caio-cdn", ok: has("CDN_BASE_URL", "CDN_PUSH_URL"), detail: "necessário para Instagram e Threads" });
   checks.push({ name: "Instagram", ok: has("IG_USER_ID", "IG_TOKEN"), detail: "IG_USER_ID, IG_TOKEN" });
   checks.push({ name: "Threads", ok: has("THREADS_USER_ID", "THREADS_TOKEN"), detail: "THREADS_USER_ID, THREADS_TOKEN" });

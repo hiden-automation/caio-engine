@@ -2,11 +2,19 @@ import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type { z } from "zod";
 import { log, type Budget } from "@jarvis/core";
+import { claudeCodeArgs, runClaudeCli, type ClaudeCodeResult, type ClaudeCodeRunner } from "./claude-code.ts";
 
 export type Role = "writer" | "judge" | "triage";
 type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
 const DEFAULT_MODEL = "claude-opus-5-5";
+/** Na assinatura não há custo por token, mas há cota: Sonnet rende mais. */
+const DEFAULT_CC_MODEL = "sonnet";
+
+/** "api" (paga por token) ou "claude-code" (assinatura, via `claude -p`). */
+export function backend(env: NodeJS.ProcessEnv = process.env): "api" | "claude-code" {
+  return env.JARVIS_LLM === "claude-code" ? "claude-code" : "api";
+}
 const DEFAULT_EFFORT: Record<Role, Effort> = { writer: "high", judge: "medium", triage: "low" };
 
 /** US$ por milhão de tokens: [entrada, saída, leitura de cache, escrita de cache]. */
@@ -30,7 +38,7 @@ function supportsFallback(model: string): boolean {
 }
 
 export function modelFor(role: Role, env: NodeJS.ProcessEnv = process.env): string {
-  return env[`JARVIS_MODEL_${role.toUpperCase()}`] ?? env.JARVIS_MODEL ?? DEFAULT_MODEL;
+  return env[`JARVIS_MODEL_${role.toUpperCase()}`] ?? env.JARVIS_MODEL ?? (backend(env) === "claude-code" ? DEFAULT_CC_MODEL : DEFAULT_MODEL);
 }
 
 export function effortFor(role: Role, env: NodeJS.ProcessEnv = process.env): Effort {
@@ -58,17 +66,20 @@ export interface StructuredRequest<S extends z.ZodType> {
 }
 
 export class Llm {
-  private readonly client: Anthropic;
+  private client?: Anthropic;
 
   constructor(
     private readonly budget?: Budget,
     client?: Anthropic,
+    private readonly claudeCode?: ClaudeCodeRunner,
   ) {
-    this.client = client ?? new Anthropic();
+    this.client = client;
   }
 
   async structured<S extends z.ZodType>(req: StructuredRequest<S>): Promise<z.infer<S>> {
     await this.budget?.assertAvailable();
+    if (this.claudeCode || (!this.client && backend() === "claude-code")) return this.viaClaudeCode(req);
+    this.client ??= new Anthropic();
     const model = modelFor(req.role);
     const response = await this.client.beta.messages.parse({
       model,
@@ -94,5 +105,29 @@ export class Llm {
     if (response.stop_reason === "max_tokens") throw new EmptyOutputError("Saída truncada em max_tokens");
     if (!response.parsed_output) throw new EmptyOutputError("Saída estruturada vazia");
     return response.parsed_output as z.infer<S>;
+  }
+
+  /** Assinatura: custo marginal zero, então nada entra no teto de gasto. */
+  private async viaClaudeCode<S extends z.ZodType>(req: StructuredRequest<S>): Promise<z.infer<S>> {
+    if (typeof req.user !== "string") throw new Error("Modo claude-code só aceita entrada em texto");
+    const model = modelFor(req.role);
+    const raw = await (this.claudeCode ?? runClaudeCli)(claudeCodeArgs(model, effortFor(req.role), req.stableSystem, req.schema), req.user);
+    let res: ClaudeCodeResult;
+    try {
+      res = JSON.parse(raw) as ClaudeCodeResult;
+    } catch {
+      throw new EmptyOutputError("Resposta do claude -p não é JSON");
+    }
+    log("llm.call", {
+      role: req.role,
+      backend: "claude-code",
+      model: Object.keys(res.modelUsage ?? {})[0] ?? model,
+      in: res.usage?.input_tokens ?? 0,
+      out: res.usage?.output_tokens ?? 0,
+      cacheRead: res.usage?.cache_read_input_tokens ?? 0,
+    });
+    if (res.stop_reason === "refusal") throw new RefusedError(null);
+    if (res.is_error || res.structured_output == null) throw new EmptyOutputError(`claude -p falhou (${res.subtype ?? "sem saída estruturada"})`);
+    return req.schema.parse(res.structured_output) as z.infer<S>;
   }
 }

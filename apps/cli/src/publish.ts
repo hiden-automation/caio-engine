@@ -3,8 +3,11 @@ import { log, logError, transition, type ContentPackage, type Variant } from "@j
 import { PublishError, publishersFromEnv, type Publisher, type ResolvedAsset } from "@jarvis/publishers";
 import type { Ctx } from "./context.ts";
 import { CdnStager } from "./cdn.ts";
+import { nextSlot, slotKey, takenSlots } from "./schedule.ts";
 
 const MAX_ATTEMPTS = 3;
+/** Atrasado além disso (ex.: rede ligada depois da aprovação) não sai em rajada: volta para a agenda. */
+const STALE_MS = 6 * 3_600_000;
 
 function due(v: Variant, now: Date): boolean {
   return v.status === "approved" && !!v.scheduledAt && new Date(v.scheduledAt) <= now;
@@ -19,7 +22,7 @@ function settle(pkg: ContentPackage, now: Date): ContentPackage {
 }
 
 export async function publish(ctx: Ctx, publishers: Partial<Record<string, Publisher>> = publishersFromEnv()): Promise<{ published: number; failed: number }> {
-  const pkgs = (await ctx.store.listPackages(["scheduled"])).filter((p) => p.variants.some((v) => due(v, ctx.now)));
+  const pkgs = (await rescheduleStale(ctx, publishers)).filter((p) => p.variants.some((v) => due(v, ctx.now)));
   const cdn = new CdnStager();
   let published = 0;
   let failed = 0;
@@ -82,4 +85,29 @@ export async function publish(ctx: Ctx, publishers: Partial<Record<string, Publi
   }
   log("publish.done", { published, failed, packages: pkgs.length });
   return { published, failed };
+}
+
+async function rescheduleStale(ctx: Ctx, publishers: Partial<Record<string, Publisher>>): Promise<ContentPackage[]> {
+  const all = await ctx.store.listPackages(["scheduled"]);
+  const strategy = await ctx.store.strategy();
+  const taken = takenSlots(all);
+  const after = new Date(ctx.now.getTime() + 10 * 60_000);
+  return Promise.all(
+    all.map(async (pkg) => {
+      const stale = (v: Variant) => due(v, ctx.now) && !!publishers[v.platform] && ctx.now.getTime() - new Date(v.scheduledAt!).getTime() > STALE_MS;
+      if (!pkg.variants.some(stale)) return pkg;
+      const variants = pkg.variants.map((v) => {
+        if (!stale(v)) return v;
+        const k = slotKey(v);
+        if (!taken.has(k)) taken.set(k, new Set());
+        const iso = nextSlot(strategy.slots[v.platform] ?? ["12:00"], taken.get(k)!, after);
+        taken.get(k)!.add(iso);
+        log("publish.rescheduled", { pkg: pkg.id, variant: v.id, platform: v.platform });
+        return { ...v, scheduledAt: iso };
+      });
+      const next = { ...pkg, variants };
+      if (!ctx.dryRun) await ctx.store.savePackage(next);
+      return next;
+    }),
+  );
 }

@@ -29,7 +29,42 @@ export interface ImageCandidate {
  * Imagem do assunto em bancos com licença que permite uso comercial
  * (Openverse: Flickr, Wikimedia e outros). O crédito sai pronto.
  */
-export async function searchImages(query: string, limit = 6): Promise<ImageCandidate[]> {
+export async function searchImages(query: string, limit = 8): Promise<ImageCandidate[]> {
+  const [commons, openverse] = await Promise.all([searchCommonsImages(query, 4).catch(() => []), searchOpenverse(query, limit).catch(() => [])]);
+  return [...commons, ...openverse].slice(0, limit);
+}
+
+async function searchCommonsImages(query: string, limit: number): Promise<ImageCandidate[]> {
+  const q = new URLSearchParams({
+    action: "query",
+    format: "json",
+    generator: "search",
+    gsrnamespace: "6",
+    gsrsearch: `filetype:bitmap ${query}`,
+    gsrlimit: "12",
+    prop: "imageinfo",
+    iiprop: "url|size|extmetadata",
+    iiurlwidth: "400",
+    iiextmetadatafilter: "Artist|LicenseShortName",
+  });
+  const d = await getJson<{ query?: { pages: Record<string, { imageinfo: { url: string; thumburl?: string; width: number; height: number; extmetadata?: Record<string, { value: string }> }[] }> } }>(
+    `https://commons.wikimedia.org/w/api.php?${q}`,
+  );
+  const strip = (h = "") => h.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+  return Object.values(d.query?.pages ?? {})
+    .map((p) => p.imageinfo[0]!)
+    .filter((ii) => ii.width >= 700 && ii.height >= 500 && /\.(jpe?g|png)$/i.test(ii.url))
+    .slice(0, limit)
+    .map((ii) => ({
+      url: ii.url,
+      thumb: ii.thumburl ?? ii.url,
+      width: ii.width,
+      height: ii.height,
+      credit: `Foto: ${strip(ii.extmetadata?.Artist?.value).slice(0, 40) || "Wikimedia Commons"} · ${strip(ii.extmetadata?.LicenseShortName?.value) || "licença livre"}`,
+    }));
+}
+
+async function searchOpenverse(query: string, limit: number): Promise<ImageCandidate[]> {
   const q = new URLSearchParams({ q: query, license_type: "commercial", page_size: "20", mature: "false" });
   const d = await getJson<{ results: { url: string; thumbnail: string; creator?: string; license: string; license_version?: string; width?: number; height?: number; source?: string }[] }>(
     `https://api.openverse.org/v1/images/?${q}`,

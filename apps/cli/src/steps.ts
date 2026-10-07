@@ -102,7 +102,14 @@ export async function prepareReact(
       url = ref.url ?? "";
       downloadUrl = ref.downloadUrl;
     } else {
-      const cands = await searchVideos(query);
+      // Busca do mais específico ao mais amplo (o acervo livre é menor que o YouTube).
+      const words = query.split(/\s+/).filter(Boolean);
+      const queries = [...new Set([query, words.slice(0, 2).join(" "), words[0] ?? query].filter(Boolean))];
+      let cands: Awaited<ReturnType<typeof searchVideos>> = [];
+      for (const q of queries) {
+        cands = await searchVideos(q);
+        if (cands.length) break;
+      }
       const chosen = cands[0];
       if (!chosen) {
         log("produce.react_no_source", { query });

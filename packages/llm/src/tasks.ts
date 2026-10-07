@@ -216,6 +216,10 @@ export async function pickImage(llm: Llm, brand: BrandContext, subject: string, 
     stableSystem: brand.system,
     schema: ImagePick,
     images: candidates,
-    user: `Tarefa: escolher a imagem que melhor representa "${subject}" num post de Instagram. Prefira: o assunto nítido e reconhecível, boa qualidade, sem texto grande por cima, sem marca d'água, sem conteúdo constrangedor. Responda 0 se nenhuma serve.`,
+    user: `Tarefa: escolher a imagem que melhor representa "${subject}" num post de Instagram.
+Seja exigente: a imagem precisa MOSTRAR CLARAMENTE o assunto, de um jeito que qualquer pessoa reconheça na hora.
+Rejeite: brinquedo/LEGO/boneco/desenho infantil (a não ser que o assunto seja isso), recorte de manual, imagem borrada ou escura, assunto pequeno ou cortado, texto grande por cima, marca d'água, montagem confusa.
+Fantasia/cosplay só serve se o personagem estiver inteiro, nítido e fiel.
+Responda 0 se nenhuma serve — é melhor não ter imagem do que ter uma ruim.`,
   });
 }

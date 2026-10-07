@@ -51,6 +51,14 @@ export function handleOf(t: VisualTokens): string {
   return /seu\.handle|^@?$/.test(t.handle.trim()) ? "" : t.handle;
 }
 
+/** Crédito numa linha: autor encurtado + licença. */
+export function shortCredit(credit: string): string {
+  const [who = "", lic = ""] = credit.split(" · ");
+  const name = who.replace(/\s*[–—(-].*$/, "").trim() || who;
+  const cut = name.length > 34 ? `${name.slice(0, 32).trim()}…` : name;
+  return lic ? `${cut} · ${lic}` : cut;
+}
+
 export function esc(s: string): string {
   return s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 }
@@ -171,7 +179,7 @@ export function body(slide: Slide, ctx: SlideContext): string {
           : "";
       const isCta = arg === "cta";
       return `<div class="split">
-        <div class="src-area"><div class="src-bg" style="background-image:url('${r.still}')"></div>${src}<div class="src-credit">▶ ${esc(r.credit)}</div></div>
+        <div class="src-area"><div class="src-bg" style="background-image:url('${r.still}')"></div>${src}<div class="src-credit">▶ ${esc(shortCredit(r.credit))}</div></div>
         <div class="me-area">${caio}${slide.title || slide.body ? `<div class="re-card${isCta ? " cta-card" : ""}">${slide.title ? `<h2>${title}</h2>` : ""}${slide.body ? `<p>${text}</p>` : ""}</div>` : ""}</div>
       </div>`;
     }
@@ -403,6 +411,9 @@ export function css(t: VisualTokens, canvas: Canvas, look: Look): string {
   .bubble::after{content:"";position:absolute;right:120px;bottom:-30px;border:16px solid transparent;border-top:18px solid ${c.accent}66}
   .talker{-webkit-mask-image:linear-gradient(to bottom, #000 85%, transparent);mask-image:linear-gradient(to bottom, #000 85%, transparent);position:absolute;right:-${pad}px;bottom:-${canvas === "story" ? 230 : 120}px;height:${canvas === "story" ? 860 : 640}px;object-fit:contain;object-position:bottom;z-index:1}
   .talker.round{right:0;bottom:0;width:300px;height:300px;border-radius:50%;object-fit:cover;border:6px solid ${c.accent}}
+  .hdr.on-photo{color:#fff;background:#0B0F17b3;border-radius:999px;padding:10px 26px 10px 10px;right:auto;max-width:calc(100% - ${pad * 2}px)}
+  .hdr.on-photo .who span{color:#C9D1DE}
+  .hdr.on-photo .meta{display:none}
   .badge{width:.9em;height:.9em;margin-left:8px;vertical-align:-0.1em}
   .cover-photo{position:relative}
   .credit.in{top:16px;right:16px;bottom:auto}
@@ -419,11 +430,11 @@ export function css(t: VisualTokens, canvas: Canvas, look: Look): string {
   .src-bg{position:absolute;inset:-40px;background-size:cover;background-position:center;filter:blur(30px) brightness(.5)}
   .src-v{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);width:100%;height:auto;max-height:100%;object-fit:contain}
   .src-v.still{filter:brightness(.55)}
-  .src-credit{position:absolute;left:24px;bottom:20px;font-family:'${t.fonts.mono}';font-size:22px;color:#fff;background:#000a;padding:6px 14px;border-radius:10px}
+  .src-credit{white-space:nowrap;max-width:90%;overflow:hidden;text-overflow:ellipsis;position:absolute;left:24px;bottom:20px;font-family:'${t.fonts.mono}';font-size:22px;color:#fff;background:#000a;padding:6px 14px;border-radius:10px}
   .me-area{position:relative;height:50%;overflow:hidden}
-  .re-cut{position:absolute;right:-20px;bottom:0;height:96%;object-fit:contain;object-position:bottom right;-webkit-mask-image:linear-gradient(to bottom,#000 85%,transparent);mask-image:linear-gradient(to bottom,#000 85%,transparent)}
-  .re-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(.8)}
-  .re-card{position:absolute;left:${pad}px;right:${pad + 180}px;top:70px;background:${look.style === "hud" ? "#0F1520ee" : "#FFFFFFf2"};border:1px solid ${c.accent}55;border-radius:28px;padding:30px 34px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 50px #0007}
+  .re-cut{position:absolute;right:-30px;bottom:0;height:94%;max-width:52%;object-fit:contain;object-position:bottom right;-webkit-mask-image:linear-gradient(to bottom,#000 85%,transparent);mask-image:linear-gradient(to bottom,#000 85%,transparent)}
+  .re-photo{position:absolute;right:0;top:0;bottom:0;width:46%;height:100%;object-fit:cover;-webkit-mask-image:linear-gradient(to right,transparent,#000 22%);mask-image:linear-gradient(to right,transparent,#000 22%)}
+  .re-card{position:absolute;left:${pad}px;width:54%;top:60px;background:${look.style === "hud" ? "#0F1520ee" : "#FFFFFFf2"};border:1px solid ${c.accent}55;border-radius:28px;padding:30px 34px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 50px #0007}
   .re-card h2{font-size:58px !important}.re-card p{font-size:38px !important;opacity:.9}
   .react .hdr{display:none}
   .sim{display:flex;justify-content:center;background:${c.surface};border-radius:32px;padding:10px}
@@ -458,7 +469,7 @@ export function slideHtml(slide: Slide, ctx: SlideContext): string {
   const isReact = kind === "react";
   return `<section class="slide ${ctx.canvas} ${ctx.look.style}${fullBleed || isReact ? " fullbleed" : ""}${isReact ? " react" : ""}">
     <i class="brk tl"></i><i class="brk tr"></i><i class="brk bl"></i><i class="brk br"></i>
-    <div class="hdr" ${fullBleed ? 'style="color:#fff;text-shadow:0 2px 12px #000c"' : ""}>${avatarHtml(ctx)}<div class="who"><b>${nameHtml(ctx)}</b>${handleOf(ctx.tokens) ? `<span>${esc(handleOf(ctx.tokens))}</span>` : ""}</div><div class="meta">${series}${counter}</div></div>
+    <div class="hdr${fullBleed ? " on-photo" : ""}">${avatarHtml(ctx)}<div class="who"><b>${nameHtml(ctx)}</b>${handleOf(ctx.tokens) ? `<span>${esc(handleOf(ctx.tokens))}</span>` : ""}</div><div class="meta">${series}${counter}</div></div>
     <div class="content">${body(slide, ctx)}</div>
     ${!ctx.motion && ctx.total > 1 ? `<div class="foot">${last ? `<span class="sig"><i></i>${esc(handleOf(ctx.tokens) || ctx.tokens.displayName)}</span><span>salva pra depois</span>` : `<span class="sig"><i></i>${esc(PILLAR_ACCENT[ctx.look.pillar].label)}</span><span>arrasta →</span>`}</div>` : ""}
     ${ctx.total > 1 && !ctx.motion ? `<div class="prog" style="width:${((ctx.index + 1) / ctx.total) * 100}%"></div>` : ""}

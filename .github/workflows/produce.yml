@@ -18,6 +18,9 @@ on:
       concurrency:
         description: pacotes em paralelo
         default: "3"
+      only:
+        description: "só estes itens da matriz (ex.: 7,10,12)"
+        default: ""
 concurrency:
   group: jarvis-data
   cancel-in-progress: false
@@ -31,6 +34,7 @@ jobs:
       DATA_DIR: data
       PREVIEWS_DIR: previews
       LIBRARY_DIR: library
+      JARVIS_MATRIX_ONLY: ${{ inputs.only }}
       JARVIS_PLATFORMS: ${{ vars.JARVIS_PLATFORMS }}
       # claude-code = assinatura (CLAUDE_CODE_OAUTH_TOKEN); api = paga por token.
       JARVIS_LLM: ${{ vars.JARVIS_LLM || 'claude-code' }}

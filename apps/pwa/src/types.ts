@@ -28,6 +28,8 @@ export interface Feed {
   pending: ContentPackage[];
   /** Agendados, com o conteúdo completo (dá para rever e tirar da agenda). */
   scheduled: ContentPackage[];
+  /** Ajustes pedidos que o motor está refazendo agora. */
+  editing?: { id: string; hook: string; format: string; note: string; at: string }[];
   /** Rejeitados por ele, expirados e reprovados pelo revisor (dá para recuperar). */
   rejected?: ContentPackage[];
   published: PackageSummary[];

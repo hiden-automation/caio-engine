@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
-import { getJson, listLibrary, MAX_UPLOAD_BYTES, previewUrl, uploadToLibrary, type Conn, type LibraryItem } from "./github.ts";
+import { deleteFromLibrary, getJson, listLibrary, MAX_UPLOAD_BYTES, previewUrl, uploadToLibrary, type Conn, type LibraryItem } from "./github.ts";
 import type { LibraryItem as Tagged } from "@jarvis/core/schemas";
 
 const IMAGE = /\.(jpe?g|png|webp|gif)$/i;
 
-function Thumb({ conn, item, info }: { conn: Conn; item: LibraryItem; info?: Tagged }) {
+function Thumb({ conn, item, info, onDelete }: { conn: Conn; item: LibraryItem; info?: Tagged; onDelete: () => void }) {
   const t = info?.tags;
   return (
     <div className="thumb-wrap">
       <RawThumb conn={conn} item={item} />
+      <button className="thumb-del" aria-label="Apagar da base" onClick={onDelete}>✕</button>
       {info && (
         <div className="thumb-tag">
           <b>{info.id}</b> {t ? t.description : "na fila para a IA olhar"}
@@ -81,6 +82,18 @@ export function Library({ conn, toast }: { conn: Conn; toast: (m: string) => voi
     }
   }
 
+  async function remove(item: LibraryItem) {
+    const info = tags[item.path];
+    if (!confirm(`Apagar ${info?.id ?? "esta mídia"} da base? Ela não vai mais aparecer nos próximos posts.`)) return;
+    try {
+      await deleteFromLibrary(conn, item.path, info?.id);
+      setItems((list) => (list ?? []).filter((x) => x.path !== item.path));
+      toast("Apagada da base ✓ (posts já prontos não mudam)");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Falhou ao apagar");
+    }
+  }
+
   const totalMb = (items ?? []).reduce((a, b) => a + b.size, 0) / 1024 / 1024;
 
   return (
@@ -95,7 +108,7 @@ export function Library({ conn, toast }: { conn: Conn; toast: (m: string) => voi
       </p>
       <div className="grid">
         {(items ?? []).slice(0, 60).map((it) => (
-          <Thumb key={it.path} conn={conn} item={it} info={tags[it.path]} />
+          <Thumb key={it.path} conn={conn} item={it} info={tags[it.path]} onDelete={() => void remove(it)} />
         ))}
       </div>
     </section>

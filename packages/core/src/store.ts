@@ -19,6 +19,14 @@ import {
  * Os workflows fazem checkout, o CLI lê/escreve arquivos e o workflow
  * commita no final — simples, auditável e com histórico no git.
  */
+/** Estado da base que não é de um item só. */
+export interface LibraryMeta {
+  avatar?: string;
+  avatarFrom?: string;
+  /** Maior número de id já usado (L<n>): mídia apagada não tem o id reaproveitado. */
+  lastId?: number;
+}
+
 export class FsStore {
   constructor(
     readonly dataDir: string,
@@ -136,11 +144,11 @@ export class FsStore {
     return this.writeJson("library/index.json", items.map((i) => LibraryItem.parse(i)));
   }
 
-  async libraryMeta(): Promise<{ avatar?: string; avatarFrom?: string }> {
-    return (await this.exists("library/meta.json")) ? (JSON.parse(await this.readText("library/meta.json")) as { avatar?: string; avatarFrom?: string }) : {};
+  async libraryMeta(): Promise<LibraryMeta> {
+    return (await this.exists("library/meta.json")) ? (JSON.parse(await this.readText("library/meta.json")) as LibraryMeta) : {};
   }
 
-  saveLibraryMeta(meta: { avatar?: string; avatarFrom?: string }): Promise<void> {
+  saveLibraryMeta(meta: LibraryMeta): Promise<void> {
     return this.writeJson("library/meta.json", meta);
   }
 

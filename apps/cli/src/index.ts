@@ -18,7 +18,7 @@ const HELP = `jarvis <comando> [opções]
   init-data <pasta> [--force]   cria a estrutura do repositório caio-data
   library                       base: etiqueta, recorta e prepara as mídias novas
   trends                        caça tendências → ideias (e via expressa)
-  produce [--count N] [--idea ID] [--matrix] [--concurrency N]
+  produce [--count N] [--idea ID] [--matrix] [--concurrency N] [--edits-only]
                                 roteiro → arte → QA → fila do PWA (--matrix = teste em massa)
   rerender                      refaz artes/vídeos da fila com o mesmo texto (sem IA)
   reviews                       aplica decisões do PWA e agenda os aprovados
@@ -37,6 +37,9 @@ async function main(): Promise<void> {
     options: {
       count: { type: "string" },
       matrix: { type: "boolean" },
+      "edits-only": { type: "boolean" },
+      "only-edits": { type: "boolean" },
+      "skip-edits": { type: "boolean" },
       concurrency: { type: "string" },
       idea: { type: "string" },
       force: { type: "boolean" },
@@ -70,6 +73,7 @@ async function main(): Promise<void> {
         count: values.count ? Number(values.count) : undefined,
         ideaId: values.idea,
         matrix: values.matrix,
+        editsOnly: values["edits-only"],
         concurrency: values.concurrency ? Number(values.concurrency) : undefined,
       });
       break;
@@ -78,7 +82,7 @@ async function main(): Promise<void> {
       await rerender(ctx, process.env.JARVIS_MATRIX_ONLY?.split(",").map((f) => f.trim()).filter(Boolean));
       break;
     case "reviews":
-      await applyReviews(ctx);
+      await applyReviews(ctx, values["only-edits"] ? "edits" : values["skip-edits"] ? "no-edits" : undefined);
       break;
     case "publish":
       await publish(ctx);

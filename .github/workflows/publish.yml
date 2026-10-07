@@ -43,7 +43,8 @@ jobs:
         with:
           data-token: ${{ secrets.DATA_TOKEN }}
           data-repo: ${{ vars.DATA_REPO }}
-      - run: npm run -s jarvis -- reviews
+      # Ajustes pedidos ficam com o produce.yml (evento "edit"), que refaz na hora.
+      - run: npm run -s jarvis -- reviews --skip-edits
       - run: npm run -s jarvis -- publish
       - if: always()
         run: bash scripts/ci/save.sh "publicação"

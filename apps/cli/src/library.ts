@@ -1,4 +1,4 @@
-import { mkdir, readdir, stat } from "node:fs/promises";
+import { access, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { log, logError, type LibraryItem } from "@jarvis/core";
 import { tagMedia } from "@jarvis/llm";
@@ -32,10 +32,30 @@ export function usable(item: LibraryItem): boolean {
  * library. Aqui cada arquivo novo é normalizado, etiquetado pela IA (visão),
  * recortado (pessoa/cachorro) e, se for vídeo, vira b-roll vertical.
  */
-export async function processLibrary(ctx: Ctx): Promise<{ added: number; tagged: number }> {
-  const items = await ctx.store.library();
+export async function processLibrary(ctx: Ctx): Promise<{ added: number; tagged: number; removed: number }> {
+  const all = await ctx.store.library();
+  const metaStart = await ctx.store.libraryMeta();
+  let next = Math.max(metaStart.lastId ?? 0, ...all.map((i) => Number(i.id.slice(1)) || 0)) + 1;
+
+  // 0) Apagadas no PWA (o arquivo original sumiu da branch library): saem do índice e não voltam.
+  const exists = (p: string) => access(abs(ctx, p)).then(() => true, () => false);
+  const items: LibraryItem[] = [];
+  let removed = 0;
+  for (const it of all) {
+    if (await exists(it.raw)) {
+      items.push(it);
+      continue;
+    }
+    removed++;
+    await rm(join(ctx.libraryDir, "derived", it.id), { recursive: true, force: true });
+    log("library.removed", { id: it.id });
+  }
+  if (removed && metaStart.avatarFrom && !items.some((i) => i.id === metaStart.avatarFrom)) {
+    // O avatar vinha de uma foto apagada: some até achar outra boa.
+    await rm(join(ctx.libraryDir, "derived", "avatar.jpg"), { force: true });
+    await ctx.store.saveLibraryMeta({ ...metaStart, avatar: undefined, avatarFrom: undefined });
+  }
   const known = new Set(items.map((i) => i.raw));
-  let next = items.reduce((m, i) => Math.max(m, Number(i.id.slice(1)) || 0), 0) + 1;
   let added = 0;
 
   // 1) Ingestão.
@@ -123,7 +143,7 @@ export async function processLibrary(ctx: Ctx): Promise<{ added: number; tagged:
     const file = join(ctx.libraryDir, "derived", "avatar.jpg");
     try {
       await avatarFromCutout(abs(ctx, best.derived.cutout!), file);
-      await ctx.store.saveLibraryMeta({ ...meta, avatar: rel(ctx, file), avatarFrom: best.id });
+      await ctx.store.saveLibraryMeta({ ...meta, avatar: rel(ctx, file), avatarFrom: best.id, lastId: next - 1 });
       log("library.avatar", { from: best.id });
     } catch (err) {
       logError("library.avatar", err);
@@ -131,8 +151,9 @@ export async function processLibrary(ctx: Ctx): Promise<{ added: number; tagged:
   }
 
   await ctx.store.saveLibrary(items);
-  log("library.done", { added, tagged, total: items.length });
-  return { added, tagged };
+  await ctx.store.saveLibraryMeta({ ...(await ctx.store.libraryMeta()), lastId: next - 1 });
+  log("library.done", { added, tagged, removed, total: items.length });
+  return { added, tagged, removed };
 }
 
 /** Usos recentes acima disso: a mídia "descansa" (o feed não pode repetir a mesma foto em sequência). */

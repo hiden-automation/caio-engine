@@ -199,6 +199,30 @@ export async function uploadToLibrary(conn: Conn, files: File[], onProgress: (do
   return files.length;
 }
 
+/**
+ * Apaga uma mídia da base: o original e tudo o que o motor derivou dela
+ * (recorte, quadros, clipe). O motor tira do índice na próxima rodada.
+ */
+export async function deleteFromLibrary(conn: Conn, rawPath: string, id?: string): Promise<void> {
+  if (isDemo(conn)) return;
+  const ref = (await (await gh(conn, "git/ref/heads/library")).json()) as { object: { sha: string } };
+  const parent = ref.object.sha;
+  const commit = (await (await gh(conn, `git/commits/${parent}`)).json()) as { tree: { sha: string } };
+  const { tree } = (await (await gh(conn, `git/trees/${commit.tree.sha}?recursive=1`)).json()) as { tree: { path: string; type: string }[] };
+  const gone = tree.filter((t) => t.type === "blob" && (t.path === rawPath || (id && t.path.startsWith(`derived/${id}/`)))).map((t) => t.path);
+  if (!gone.length) return;
+  const next = (await (
+    await gh(conn, "git/trees", {
+      method: "POST",
+      body: JSON.stringify({ base_tree: commit.tree.sha, tree: gone.map((path) => ({ path, mode: "100644", type: "blob", sha: null })) }),
+    })
+  ).json()) as { sha: string };
+  const c = (await (
+    await gh(conn, "git/commits", { method: "POST", body: JSON.stringify({ message: `biblioteca: apagar ${id ?? rawPath.split("/").pop()}`, tree: next.sha, parents: [parent] }) })
+  ).json()) as { sha: string };
+  await gh(conn, "git/refs/heads/library", { method: "PATCH", body: JSON.stringify({ sha: c.sha }) });
+}
+
 export async function listLibrary(conn: Conn): Promise<LibraryItem[]> {
   if (isDemo(conn)) return [];
   try {

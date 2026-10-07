@@ -31,6 +31,19 @@ function saveDecided(ids: Set<string>): void {
   }
 }
 
+/** Ajustes pedidos neste aparelho: o card some e volta quando a versão refeita chegar. */
+type Editing = Record<string, { hook: string; note: string; at: string }>;
+const EDITING_KEY = "jarvis.editing";
+
+function loadEditing(): Editing {
+  try {
+    const raw = JSON.parse(localStorage.getItem(EDITING_KEY) ?? "{}") as Editing;
+    return Object.fromEntries(Object.entries(raw).filter(([, e]) => Date.now() - new Date(e.at).getTime() < 3 * 3_600_000));
+  } catch {
+    return {};
+  }
+}
+
 function Setup({ onDone }: { onDone: (c: Conn) => void }) {
   const [repo, setRepo] = useState("");
   const [token, setToken] = useState("");
@@ -247,6 +260,15 @@ export function App() {
       return next;
     });
   const [msg, setMsg] = useState("");
+  const [editing, setEditingRaw] = useState<Editing>(() => loadEditing());
+  const setEditing = (next: Editing) => {
+    setEditingRaw(next);
+    try {
+      localStorage.setItem(EDITING_KEY, JSON.stringify(next));
+    } catch {
+      /* sem armazenamento */
+    }
+  };
 
   const toast = useCallback((m: string) => {
     setMsg(m);
@@ -278,6 +300,20 @@ export function App() {
     };
   }, [refresh]);
 
+  // Versão refeita = pacote na fila atualizado depois do pedido de ajuste.
+  const back = (id: string) => feed?.pending.some((p) => p.id === id && p.updatedAt > editing[id]!.at);
+  const pending = feed?.pending.filter((p) => !decided.has(`pending:${p.id}`) && !decided.has(p.id) && (!editing[p.id] || back(p.id))) ?? [];
+  const stillEditing = Object.entries(editing).filter(([id]) => !back(id));
+  useEffect(() => {
+    if (!feed) return;
+    const done = Object.keys(editing).filter((id) => back(id));
+    if (done.length) {
+      setEditing(Object.fromEntries(Object.entries(editing).filter(([id]) => !done.includes(id))));
+      toast(done.length === 1 ? "Ajuste pronto ✓ — o post refeito voltou para a fila" : `${done.length} ajustes prontos ✓`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feed]);
+
   if (!conn) return <Setup onDone={setConn} />;
 
   async function decide(d: Decision, from: CardMode = "pending") {
@@ -291,17 +327,19 @@ export function App() {
     }
     const at = new Date().toISOString();
     await createJson(conn!, `reviews/${d.packageId}-${Date.now()}.json`, { ...d, at }, `review: ${d.decision} ${d.packageId}`);
-    setDecided((s) => new Set(s).add(`${from}:${d.packageId}`));
+    if (d.decision === "edit") {
+      const pkg = list.find((p) => p.id === d.packageId);
+      setEditing({ ...editing, [d.packageId]: { hook: pkg?.chosenHook || pkg?.topic || "", note: d.note ?? "", at } });
+    } else setDecided((s) => new Set(s).add(`${from}:${d.packageId}`));
     toast(
       d.decision === "approve"
         ? from === "rejected" ? "Recuperado ✓ — entra na agenda em instantes" : "Aprovado ✓ — o motor agenda em instantes"
         : d.decision === "reject"
           ? from === "scheduled" ? "Tirado da agenda. Fica em Rejeitados se mudar de ideia." : "Rejeitado. Fica em Rejeitados se mudar de ideia."
-          : "Ajuste pedido: volta para a fila",
+          : "Ajuste pedido: o motor já está refazendo. Volta para a fila em ~10 min.",
     );
   }
 
-  const pending = feed?.pending.filter((p) => !decided.has(`pending:${p.id}`) && !decided.has(p.id)) ?? [];
 
   return (
     <div className="app">
@@ -314,6 +352,13 @@ export function App() {
         {!feed && !error && <p className="empty">Carregando…</p>}
         {feed && tab === "fila" && (
           <section className="list">
+            {stillEditing.map(([id, e]) => (
+              <div key={id} className="editing">
+                <b>⟳ Refazendo com o seu ajuste</b>
+                {e.hook}
+                {e.note && <p className="muted small">“{e.note}”</p>}
+              </div>
+            ))}
             {pending.length === 0 && <p className="empty">Fila zerada. O JARVIS produz duas vezes por dia.</p>}
             {pending.map((p) => (
               <PackageCard key={p.id} conn={conn} pkg={p} onDecide={(d) => decide(d, "pending")} />

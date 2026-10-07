@@ -40,6 +40,10 @@ export async function writeFeed(ctx: Ctx): Promise<void> {
     pending: pkgs
       .filter((p) => p.status === "pending_review")
       .sort((a, b) => Number(b.express) - Number(a.express) || byNewest(a, b)),
+    // Ajustes pedidos que o motor está refazendo agora.
+    editing: pkgs
+      .filter((p) => p.status === "edit_requested")
+      .map((p) => ({ id: p.id, hook: p.chosenHook || p.topic, format: p.format, note: p.editRequests.at(-1)?.note ?? "", at: p.updatedAt })),
     // Agenda e Rejeitados mostram o conteúdo completo (dá para rever, tirar da agenda ou recuperar).
     scheduled: pkgs.filter((p) => p.status === "scheduled").sort((a, b) => firstSlot(a).localeCompare(firstSlot(b))),
     // Os que ele rejeitou aparecem todos; expirados e reprovados pelo revisor, só os mais recentes.

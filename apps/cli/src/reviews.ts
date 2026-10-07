@@ -13,14 +13,17 @@ const ALLOWED_FROM: Record<Review["decision"], PackageStatus[]> = {
  * Aplica as decisões tomadas no PWA (arquivos em reviews/) e expira o que
  * passou do prazo sem aprovação. Nada é publicado sem passar por aqui.
  */
-export async function applyReviews(ctx: Ctx): Promise<{ applied: number; expired: number }> {
+export async function applyReviews(ctx: Ctx, only?: "edits" | "no-edits"): Promise<{ applied: number; expired: number }> {
   const strategy = await ctx.store.strategy();
   const pkgs = await ctx.store.listPackages();
   const byId = new Map(pkgs.map((p) => [p.id, p]));
   const taken = takenSlots(pkgs);
   let applied = 0;
 
-  const pending = (await ctx.store.pendingReviews()).sort((a, b) => a.review.at.localeCompare(b.review.at));
+  // Ajuste pedido é aplicado pelo workflow de ajuste (na hora); o resto, pela publicação.
+  const pending = (await ctx.store.pendingReviews())
+    .filter(({ review }) => !only || (only === "edits") === (review.decision === "edit"))
+    .sort((a, b) => a.review.at.localeCompare(b.review.at));
   for (const { file, review } of pending) {
     const pkg = byId.get(review.packageId);
     try {
@@ -62,6 +65,7 @@ export async function applyReviews(ctx: Ctx): Promise<{ applied: number; expired
   }
 
   let expired = 0;
+  if (only === "edits") return { applied, expired };
   for (const pkg of byId.values()) {
     if (pkg.status === "pending_review" && pkg.expiresAt && new Date(pkg.expiresAt) < ctx.now) {
       await ctx.store.savePackage(transition(pkg, "expired", "prazo de aprovação vencido", ctx.now));

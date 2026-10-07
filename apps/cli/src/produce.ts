@@ -523,6 +523,8 @@ export interface ProduceOptions {
   concurrency?: number;
   /** Restringe os formatos sorteados (ex.: testes sem rede). */
   formats?: ProduceSlot["format"][];
+  /** Só refaz os pacotes com ajuste pedido no PWA (disparado na hora do pedido). */
+  editsOnly?: boolean;
 }
 
 async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>): Promise<void> {
@@ -584,7 +586,9 @@ export async function produce(ctx: Ctx, opts: ProduceOptions = {}): Promise<{ cr
     const ideas = (await ctx.store.listIdeas("new")).filter((i) => !i.expiresAt || new Date(i.expiresAt) > ctx.now);
     const available = IMPLEMENTED_FORMATS.filter((f) => ctx.platforms.some((p) => KIND_BY_FORMAT[f]?.[p]) && (!opts.formats || opts.formats.includes(f)));
     let slots: { slot: ProduceSlot; idea?: Idea }[];
-    if (opts.ideaId) {
+    if (opts.editsOnly) {
+      slots = [];
+    } else if (opts.ideaId) {
       const idea = ideas.find((i) => i.id === opts.ideaId);
       if (!idea) throw new Error(`Ideia ${opts.ideaId} não encontrada ou expirada`);
       const format = available.includes(idea.suggestedFormat) ? idea.suggestedFormat : "carousel";

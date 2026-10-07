@@ -3,6 +3,9 @@ name: produzir
 on:
   schedule:
     - cron: "0 9,18 * * *"
+  # Ajuste pedido no PWA: o caio-data avisa na hora e o pacote é refeito.
+  repository_dispatch:
+    types: [edit]
   workflow_dispatch:
     inputs:
       count:
@@ -25,8 +28,13 @@ on:
         description: só refazer artes/vídeos da fila (mesmo texto, sem IA)
         type: boolean
         default: false
+      edits:
+        description: só refazer os pacotes com ajuste pedido (disparado pelo PWA)
+        type: boolean
+        default: false
 concurrency:
-  group: jarvis-data
+  # Ajuste pedido no PWA tem fila própria: não espera produção longa nem é cancelado por ela.
+  group: ${{ (inputs.edits || github.event.action == 'edit') && 'jarvis-edit' || 'jarvis-data' }}
   cancel-in-progress: false
 permissions:
   contents: read
@@ -39,6 +47,7 @@ jobs:
       PREVIEWS_DIR: previews
       LIBRARY_DIR: library
       JARVIS_MATRIX_ONLY: ${{ inputs.only }}
+      EDITS: ${{ (inputs.edits || github.event.action == 'edit') && 'true' || 'false' }}
       JARVIS_PLATFORMS: ${{ vars.JARVIS_PLATFORMS }}
       # claude-code = assinatura (CLAUDE_CODE_OAUTH_TOKEN); api = paga por token.
       JARVIS_LLM: ${{ vars.JARVIS_LLM || 'claude-code' }}
@@ -54,11 +63,17 @@ jobs:
           media: "true"
       - if: env.JARVIS_LLM == 'claude-code'
         run: npm install -g @anthropic-ai/claude-code --no-audit --no-fund
-      - run: npm run -s jarvis -- reviews
-      - run: npm run -s jarvis -- library
+      - if: env.EDITS != 'true'
+        run: npm run -s jarvis -- reviews
+      - if: env.EDITS == 'true'
+        run: npm run -s jarvis -- reviews --only-edits
+      - if: env.EDITS != 'true'
+        run: npm run -s jarvis -- library
       - if: inputs.rerender
         run: npm run -s jarvis -- rerender
-      - if: ${{ !inputs.rerender }}
+      - if: env.EDITS == 'true'
+        run: npm run -s jarvis -- produce --edits-only
+      - if: ${{ !inputs.rerender && env.EDITS != 'true' }}
         run: |
           args=()
           [ -n "${{ inputs.count }}" ] && args+=(--count "${{ inputs.count }}")

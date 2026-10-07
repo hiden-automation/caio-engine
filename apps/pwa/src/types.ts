@@ -27,6 +27,8 @@ export interface Feed {
   generatedAt: string;
   pending: ContentPackage[];
   scheduled: PackageSummary[];
+  /** Reprovados pelo revisor automático (para auditar o QA). */
+  discarded?: (PackageSummary & { hook?: string; style?: string; score?: number; issues: string[]; video?: string })[];
   published: PackageSummary[];
   counts: Record<string, number>;
   spendBrl: number;

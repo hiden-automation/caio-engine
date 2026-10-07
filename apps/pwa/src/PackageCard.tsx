@@ -4,7 +4,7 @@ import { PILLAR_LABEL, PLATFORM_LABEL, type ContentPackage, type Review } from "
 
 const REJECT_REASONS = ["tema fraco", "fora da marca", "erro factual", "visual ruim", "repetido", "não é a minha opinião"];
 
-function Preview({ conn, path, alt }: { conn: Conn; path: string; alt: string }) {
+export function Preview({ conn, path, alt }: { conn: Conn; path: string; alt: string }) {
   const [src, setSrc] = useState<string>();
   const [failed, setFailed] = useState(false);
   useEffect(() => {

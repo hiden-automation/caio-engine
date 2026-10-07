@@ -239,7 +239,9 @@ async function build(ctx: Ctx, env: Env, input: BuildInput, recentTopics: string
   const brand = await ctx.brand();
   const llm = ctx.llm();
   const now = ctx.now;
-  const { slot, idea } = input;
+  const { idea } = input;
+  // Política/fé: sem reel (regra de marca); vira carrossel.
+  const slot: ProduceSlot = input.slot.pillar === "liberdade" && input.slot.format === "slideshow" ? { ...input.slot, format: "carousel" } : input.slot;
   const platforms = platformsFor(slot, ctx.platforms, strategy.pillarPlatforms);
 
   let simRun: GaRun | undefined;

@@ -147,3 +147,10 @@ textarea:focus, input:focus { outline: 2px solid var(--accent); outline-offset: 
 .thumb-wrap{position:relative}
 .thumb-tag{position:absolute;left:0;right:0;bottom:0;padding:4px 6px;font-size:10px;line-height:1.25;background:linear-gradient(transparent,#000c);color:#fff}
 .thumb-tag b{color:#3DDC97}.thumb-tag .bad{color:#FF5C7A;font-weight:700}
+
+.discarded{margin-top:16px;border-top:1px solid #ffffff1a;padding-top:12px}
+.discarded summary{cursor:pointer;color:#8A94A6;font-size:14px;padding:6px 0}
+.disc-head{display:flex;gap:12px;align-items:flex-start}
+.disc-thumb{flex:0 0 72px;width:72px}
+.disc-thumb .img{width:72px;height:auto;border-radius:8px}
+.issues{margin:6px 0 0 18px;font-size:12px;color:#c9cfdb;line-height:1.4}

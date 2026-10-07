@@ -96,8 +96,9 @@ export async function processLibrary(ctx: Ctx): Promise<{ added: number; tagged:
     }
   }
 
-  // 3) Recortes (Caio/cachorro) e b-roll vertical.
-  const toCut = items.filter((i) => i.kind === "image" && usable(i) && !i.derived.cutout && i.tags!.uses.some((u) => u === "recorte" || u === "avatar"));
+  // 3) Recortes (Caio/cachorro) e b-roll vertical. Recorte de mídia que a IA não aprovou para isso sai de uso.
+  for (const it of items) if (it.derived.cutout && !it.tags?.uses.includes("recorte")) delete it.derived.cutout;
+  const toCut = items.filter((i) => i.kind === "image" && usable(i) && !i.derived.cutout && i.tags!.uses.includes("recorte"));
   const pairs = toCut.map((i): [string, string] => [abs(ctx, i.derived.full), join(ctx.libraryDir, "derived", i.id, "cutout.png")]);
   if (pairs.length && (await cutoutMany(pairs))) {
     for (const [k, it] of toCut.entries()) it.derived.cutout = rel(ctx, pairs[k]![1]);

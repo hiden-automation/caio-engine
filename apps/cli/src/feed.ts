@@ -38,6 +38,11 @@ export async function writeFeed(ctx: Ctx): Promise<void> {
       .filter((p) => p.status === "pending_review")
       .sort((a, b) => Number(b.express) - Number(a.express) || byNewest(a, b)),
     scheduled: pkgs.filter((p) => p.status === "scheduled").map(summary),
+    discarded: pkgs
+      .filter((p) => p.status === "discarded")
+      .sort(byNewest)
+      .slice(0, 15)
+      .map((p) => ({ ...summary(p), hook: p.chosenHook, style: p.style, score: p.qa?.score, issues: p.qa?.issues.slice(0, 4) ?? [], video: p.assets.find((a) => a.kind === "video")?.path })),
     published: pkgs
       .filter((p) => p.status === "published" || p.status === "failed")
       .sort(byNewest)

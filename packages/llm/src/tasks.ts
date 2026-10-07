@@ -124,7 +124,7 @@ Avalie:
 6. Entrega valor real (aprende algo, sente algo, quer salvar/compartilhar)?
 7. ${images.length ? "Olhe as imagens renderizadas: texto legível, nada cortado ou sobreposto, hierarquia clara, cara de marca pessoal (não de template genérico)? Problema visual grave → blocking." : "Os visuais escolhidos são variados e fazem sentido?"}
 
-Contexto das artes: o nome e o avatar no cabeçalho são a foto real do Caio e vêm da configuração da marca (não avalie como problema); a ausência do @ também é configuração pendente.
+Contexto das artes: as fotos e vídeos da base foram enviados pelo próprio Caio para uso no perfil (detalhes pessoais visíveis nelas não são problema). O nome e o avatar no cabeçalho são a foto real do Caio e vêm da configuração da marca (não avalie como problema); a ausência do @ também é configuração pendente.
 
 score: 0–10. Abaixo de ${brand.rules.minBrandScore} não passa. Em fixInstructions, diga objetivamente o que mudar.
 
@@ -170,7 +170,7 @@ Para CADA mídia, preencha:
 - quality: 0 a 1 (nitidez, luz, enquadramento).
 - political: true se há QUALQUER símbolo, número, adesivo ou cor de partido/candidato (estamos em período eleitoral).
 - sensitive: true se aparece rosto identificável de outra pessoa, criança, documento, placa de carro, endereço ou tela com dado pessoal.
-- uses: avatar (rosto do Caio nítido, de frente), capa (forte para capa de carrossel), fundo (bom fundo para texto por cima), story, reacao (expressão que serve de reação/meme), broll (vídeo bom de fundo para reel), recorte (vale recortar o fundo: Caio ou cachorro bem destacado).
+- uses: avatar (rosto do Caio nítido, de frente), capa (forte para capa de carrossel), fundo (bom fundo para texto por cima), story, reacao (expressão que serve de reação/meme), broll (vídeo bom de fundo para reel), recorte (o recorte do fundo vai ficar LIMPO: sujeito inteiro, bem separado do fundo, sem objetos na frente; selfie em carro, mão cortada ou fundo confuso NÃO).
 - focus: ponto de interesse principal (x, y de 0 a 1) para enquadrar cortes.
 
 Mídias:

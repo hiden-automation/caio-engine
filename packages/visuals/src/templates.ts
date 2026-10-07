@@ -111,11 +111,12 @@ export function body(slide: Slide, ctx: SlideContext): string {
     case "capa": {
       const size = fit(slide.title, story ? [[30, 124], [60, 108], [100, 92], [999, 76]] : [[30, 112], [60, 96], [100, 80], [999, 66]]);
       if (m?.cutout && ctx.look.style !== "post") {
+        const narrow = story ? size : fit(slide.title, [[24, 92], [45, 78], [75, 66], [999, 56]]);
         return `<div class="cover-person">
           <img class="cutout" src="${m.cutout}" alt="">
           <div class="cover-text">
             ${ctx.look.series ? `<div class="kicker">${esc(ctx.look.series)}</div>` : ""}
-            <h1 style="font-size:${size}px">${title}</h1>
+            <h1 style="font-size:${narrow}px">${title}</h1>
             ${slide.body ? `<p class="lead">${text}</p>` : ""}
           </div></div>`;
       }
@@ -196,8 +197,14 @@ export function body(slide: Slide, ctx: SlideContext): string {
         .join("")}</div>`;
     }
     case "comparacao": {
-      const [a = "", b = ""] = slide.body.split("||");
-      return `<h2>${title}</h2><div class="cmp"><div class="col before"><span class="tag">antes</span>${rich(a.trim())}</div><div class="col after"><span class="tag">depois</span>${rich(b.trim())}</div></div>`;
+      const side = (part: string, fallback: string) => {
+        const m2 = part.trim().match(/^([^:\n]{1,32}):\s*([\s\S]*)$/);
+        return m2 ? { tag: m2[1]!.trim(), text: m2[2]!.trim() } : { tag: fallback, text: part.trim() };
+      };
+      const [pa = "", pb = ""] = slide.body.split("||");
+      const a = side(pa, "antes");
+      const b = side(pb, "depois");
+      return `<h2>${title}</h2><div class="cmp"><div class="col before"><span class="tag">${esc(a.tag)}</span>${rich(a.text)}</div><div class="col after"><span class="tag">${esc(b.tag)}</span>${rich(b.text)}</div></div>`;
     }
     case "numero":
       return `<div class="center"><div class="big">${title}</div><p class="lead">${text}</p></div>`;
@@ -280,7 +287,7 @@ export function css(t: VisualTokens, canvas: Canvas, look: Look): string {
   .small{font-size:32px;color:${c.muted};line-height:1.4}
   .hl{color:${c.accent};font-weight:700}
   ${look.style === "post" ? `.hl{color:inherit;background:linear-gradient(transparent 55%, ${c.accent}40 55%);padding:0 4px}` : ""}
-  ${look.style === "quadro" ? `.hl{color:${c.accent};text-decoration:underline wavy ${c.accent}88;text-underline-offset:10px;text-decoration-thickness:3px}
+  ${look.style === "quadro" ? `.hl{color:inherit;background:linear-gradient(100deg, transparent 2%, ${c.accent}33 4%, ${c.accent}40 96%, transparent 98%);padding:0 6px;border-radius:6px}
   .kicker,.lead,.small,.foot{font-family:'Caveat',cursive !important}.lead{font-size:52px}.small{font-size:42px}.kicker{font-size:48px !important;letter-spacing:0 !important;text-transform:none !important}` : ""}
   .center{flex:1;display:flex;flex-direction:column;justify-content:center;gap:38px}
   .kicker{font-family:'${t.fonts.mono}';color:${c.accent};font-size:28px;text-transform:uppercase;letter-spacing:.2em;font-weight:700}
@@ -304,6 +311,7 @@ export function css(t: VisualTokens, canvas: Canvas, look: Look): string {
   .msg{max-width:80%;padding:24px 30px;border-radius:30px;font-size:36px;line-height:1.35}
   .msg .who{display:block;font-family:'${t.fonts.mono}';font-size:20px;letter-spacing:.12em;margin-bottom:8px;opacity:.75}
   .msg.me{align-self:flex-end;background:${c.accent};color:${look.style === "hud" ? c.bg : "#fff"};border-bottom-right-radius:8px}
+  .msg.me .hl{color:inherit;background:none;text-decoration:underline;text-underline-offset:6px}
   .msg.bot,.msg.other{align-self:flex-start;background:${c.surface};border:1px solid ${c.muted}33;border-bottom-left-radius:8px}
   .msg.bot .who{color:${c.accent}}
   .flow{display:flex;flex-direction:column;align-items:stretch;gap:4px}
@@ -330,17 +338,19 @@ export function css(t: VisualTokens, canvas: Canvas, look: Look): string {
   .big-av.mono-av{font-size:80px}
   .handle-big{font-family:'${t.fonts.mono}';font-size:46px;color:${c.accent};font-weight:700}
   .cover-person{position:absolute;inset:0;z-index:1}
-  .cover-person .cutout{position:absolute;right:-60px;bottom:0;height:${canvas === "story" ? 74 : 78}%;max-width:78%;object-fit:contain;object-position:bottom right;filter:drop-shadow(0 0 60px ${c.accent}40);-webkit-mask-image:linear-gradient(to bottom, #000 82%, transparent 100%);mask-image:linear-gradient(to bottom, #000 82%, transparent 100%)}
-  .cover-person .cover-text{position:absolute;left:${pad}px;right:${pad + 120}px;top:${canvas === "story" ? 330 : 210}px;display:flex;flex-direction:column;gap:28px}
+  .cover-person .cutout{position:absolute;right:-30px;bottom:0;height:${canvas === "story" ? 44 : 80}%;max-width:${canvas === "story" ? 80 : 50}%;object-fit:contain;object-position:bottom right;filter:drop-shadow(0 0 60px ${c.accent}40);-webkit-mask-image:linear-gradient(to bottom, #000 82%, transparent 100%);mask-image:linear-gradient(to bottom, #000 82%, transparent 100%)}
+  .cover-person .cover-text{position:absolute;left:${pad}px;${canvas === "story" ? `right:${pad}px;top:300px` : `width:54%;top:0;bottom:0;justify-content:center`};display:flex;flex-direction:column;gap:28px;z-index:2}
   .cover-person h1{text-shadow:0 6px 40px ${c.bg}}
-  .cover-person .lead{max-width:62%;text-shadow:0 4px 24px ${c.bg}}
+  .cover-person .lead{text-shadow:0 4px 24px ${c.bg}}
   .cover-photo{height:${canvas === "story" ? 820 : 560}px;flex:0 0 auto;border-radius:28px;overflow:hidden;margin-bottom:12px}
   .cover-photo .ph,.framed img{width:100%;height:100%;object-fit:cover}
   .cover-under{display:flex;flex-direction:column;gap:22px}
-  .framed{flex:1;max-height:62%;border-radius:28px;overflow:hidden;border:10px solid #fff;box-shadow:0 20px 50px #0003;transform:rotate(-1.2deg)}
+  .framed{flex:0 0 auto;height:${canvas === "story" ? 900 : 620}px;border-radius:28px;overflow:hidden;border:10px solid #fff;box-shadow:0 20px 50px #0003;transform:rotate(-1.2deg)}
   .bleed{position:absolute;inset:0;z-index:0;overflow:hidden}
+  .fullbleed .content{position:static}
   .bleed .ph{width:100%;height:100%;object-fit:cover}
-  .shade{position:absolute;inset:0;background:linear-gradient(180deg, #0B0F17cc 0%, transparent 25%, transparent 45%, #0B0F17f2 85%)}
+  .shade{position:absolute;inset:0;background:linear-gradient(180deg, #0B0F17e6 0%, #0B0F1755 16%, transparent 30%, transparent 42%, #0B0F17f2 82%)}
+  .bleed-text h2,.bleed-text p{text-shadow:0 3px 18px #000c}
   .bleed-text{position:absolute;left:${pad}px;right:${pad}px;bottom:${canvas === "story" ? 300 : 150}px;z-index:2;display:flex;flex-direction:column;gap:22px;color:#fff}
   .bleed-text p{color:#E6EAF2}
   .talk{flex:1;position:relative;min-height:600px}
@@ -351,9 +361,23 @@ export function css(t: VisualTokens, canvas: Canvas, look: Look): string {
   .sim{display:flex;justify-content:center;background:${c.surface};border-radius:32px;padding:10px}
   .stats{display:flex;gap:40px;font-family:'${t.fonts.mono}';font-size:34px;color:${c.muted}}
   .stats b{color:${c.accent2}}
-  .story h2{font-size:96px !important;line-height:1.05}
-  .story p{font-size:50px !important}
-  .story .big{font-size:300px}
+  .story h2{font-size:100px !important;line-height:1.04}
+  .story p{font-size:54px !important;line-height:1.38}
+  .story .big{font-size:320px}
+  .story .content{justify-content:center;gap:48px}
+  .story .list li,.story .check li{font-size:54px}
+  .story .list li{padding-left:110px}.story .list li::before{width:80px;height:80px;font-size:40px}
+  .story .check li span{flex-basis:72px;height:72px}
+  .story .node{font-size:46px;padding:30px 34px}
+  .story .msg{font-size:48px;max-width:86%}
+  .story .bubble{font-size:52px;right:0}
+  .story .col{font-size:44px}
+  .story .tw-text{font-size:60px !important}
+  .story .code{font-size:34px}
+  .story .crow{grid-template-columns:300px 1fr 170px;font-size:40px}
+  .story .ctrack{height:60px}
+  .story .big-av{width:320px;height:320px}
+  .story .lead{font-size:56px}
   `;
 }
 
@@ -363,9 +387,9 @@ export function slideHtml(slide: Slide, ctx: SlideContext): string {
   const fullBleed = kind === "video" || (kind === "foto" && (ctx.look.style === "hud" || ctx.canvas === "story"));
   const counter = ctx.total > 1 && !ctx.motion ? `<span>${String(ctx.index + 1).padStart(2, "0")}/${String(ctx.total).padStart(2, "0")}</span>` : "";
   const series = ctx.look.series && ctx.index > 0 ? `<span class="pill">${esc(ctx.look.series)}</span>` : "";
-  return `<section class="slide ${ctx.canvas} ${ctx.look.style}">
+  return `<section class="slide ${ctx.canvas} ${ctx.look.style}${fullBleed ? " fullbleed" : ""}">
     <i class="brk tl"></i><i class="brk tr"></i><i class="brk bl"></i><i class="brk br"></i>
-    <div class="hdr" ${fullBleed ? 'style="color:#fff;text-shadow:0 2px 12px #000a"' : ""}>${avatarHtml(ctx)}<div class="who"><b>${esc(ctx.tokens.displayName)}</b>${handleOf(ctx.tokens) ? `<span>${esc(handleOf(ctx.tokens))}</span>` : ""}</div><div class="meta">${series}${counter}</div></div>
+    <div class="hdr" ${fullBleed ? 'style="color:#fff;text-shadow:0 2px 12px #000c"' : ""}>${avatarHtml(ctx)}<div class="who"><b>${esc(ctx.tokens.displayName)}</b>${handleOf(ctx.tokens) ? `<span>${esc(handleOf(ctx.tokens))}</span>` : ""}</div><div class="meta">${series}${counter}</div></div>
     <div class="content">${body(slide, ctx)}</div>
     ${!ctx.motion && ctx.total > 1 ? `<div class="foot">${last ? `<span class="sig"><i></i>feito com o meu JARVIS</span><span></span>` : `<span class="sig"><i></i>${esc(PILLAR_ACCENT[ctx.look.pillar].label)}</span><span>arrasta →</span>`}</div>` : ""}
     ${ctx.total > 1 && !ctx.motion ? `<div class="prog" style="width:${((ctx.index + 1) / ctx.total) * 100}%"></div>` : ""}

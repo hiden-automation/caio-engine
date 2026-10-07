@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { checkConn, createJson, getJson, loadConn, saveConn, type Conn } from "./github.ts";
 import { Library } from "./Library.tsx";
-import { PackageCard, type Decision } from "./PackageCard.tsx";
+import { PackageCard, Preview, type Decision } from "./PackageCard.tsx";
 import { PILLAR_LABEL, PLATFORM_LABEL, type Feed, type PackageSummary } from "./types.ts";
 
 type Tab = "fila" | "agenda" | "base" | "ideias" | "painel";
@@ -240,6 +240,23 @@ export function App() {
             {pending.map((p) => (
               <PackageCard key={p.id} conn={conn} pkg={p} onDecide={decide} />
             ))}
+            {!!feed.discarded?.length && (
+              <details className="discarded">
+                <summary>Reprovados pelo revisor ({feed.discarded.length}) — não chegam à fila</summary>
+                {feed.discarded.map((d) => (
+                  <div key={d.id} className="row-item col">
+                    <div className="disc-head">
+                      {d.cover && <div className="disc-thumb"><Preview conn={conn} path={d.cover} alt="capa" /></div>}
+                      <div>
+                        <b>{d.hook || d.topic}</b>
+                        <p className="muted small">{d.format} · {d.style} · nota {d.score?.toFixed(1)}</p>
+                      </div>
+                    </div>
+                    <ul className="issues">{d.issues.map((i, k) => <li key={k}>{i}</li>)}</ul>
+                  </div>
+                ))}
+              </details>
+            )}
           </section>
         )}
         {feed && tab === "agenda" && <Agenda feed={feed} />}

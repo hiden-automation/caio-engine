@@ -37,6 +37,13 @@ describe("base de mídia", () => {
     expect(catalog).toContain("L2");
     expect(catalog).not.toMatch(/L1|L3|L4/);
   });
+
+  it("faz rodízio: mídia usada 2x nos pacotes recentes descansa", () => {
+    const items = [item("L2"), item("L5"), item("L6")];
+    const catalog = libraryCatalog(items, new Map([["L2", 2], ["L5", 1]]));
+    expect(catalog).not.toContain("L2 |");
+    expect(catalog.indexOf("L6")).toBeLessThan(catalog.indexOf("L5"));
+  });
 });
 
 describe("identidade visual", () => {

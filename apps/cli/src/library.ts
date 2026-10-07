@@ -135,14 +135,19 @@ export async function processLibrary(ctx: Ctx): Promise<{ added: number; tagged:
   return { added, tagged };
 }
 
-/** Catálogo curto para o roteirista escolher mídias pelo id. */
-export function libraryCatalog(items: LibraryItem[]): string {
+/** Usos recentes acima disso: a mídia "descansa" (o feed não pode repetir a mesma foto em sequência). */
+export const REST_AFTER = 2;
+
+/** Catálogo curto para o roteirista escolher mídias pelo id (a mais descansada primeiro). */
+export function libraryCatalog(items: LibraryItem[], recentUses: Map<string, number> = new Map()): string {
   return items
     .filter(usable)
+    .filter((i) => (recentUses.get(i.id) ?? 0) < REST_AFTER)
+    .sort((a, b) => (recentUses.get(a.id) ?? 0) - (recentUses.get(b.id) ?? 0))
     .map((i) => {
       const t = i.tags!;
       const has = [i.derived.cutout ? "recorte" : "", i.derived.clip ? `b-roll ${i.durationSec}s` : ""].filter(Boolean).join(", ");
-      return `- ${i.id} | ${i.kind === "video" ? "vídeo" : "foto"} | ${t.description} | pessoas: ${t.people}${t.hasDog ? ", cachorro" : ""} | expressão: ${t.expression} | lugar: ${t.setting} | usos: ${t.uses.join(", ")}${has ? ` | tem: ${has}` : ""} | usada ${i.usage.count}x`;
+      return `- ${i.id} | ${i.kind === "video" ? "vídeo" : "foto"} | ${t.description} | pessoas: ${t.people}${t.hasDog ? ", cachorro" : ""} | expressão: ${t.expression} | lugar: ${t.setting} | usos: ${t.uses.join(", ")}${has ? ` | tem: ${has}` : ""} | usada ${i.usage.count}x no total`;
     })
     .join("\n");
 }

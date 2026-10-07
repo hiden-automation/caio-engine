@@ -99,7 +99,8 @@ function refsOf(pkg: Pick<ContentPackage, "slides">): string[] {
 interface Env {
   renderer: Renderer;
   library: LibraryItem[];
-  catalog: string;
+  /** Usos recentes de cada mídia (últimos pacotes + os desta rodada), para rodízio. */
+  recentUses: Map<string, number>;
   avatar?: string;
 }
 
@@ -300,7 +301,7 @@ async function build(ctx: Ctx, env: Env, input: BuildInput, recentTopics: string
       simulationData: simRun ? simulationSummary(simRun) : undefined,
       feedback,
       previous: input.existing ?? (attempt > 0 ? pkg : undefined),
-      library: env.catalog,
+      library: libraryCatalog(env.library, env.recentUses),
       style: slot.style,
       brief: slot.brief,
     });
@@ -308,6 +309,8 @@ async function build(ctx: Ctx, env: Env, input: BuildInput, recentTopics: string
     else if (pkg.status === "rendered") pkg = transition(pkg, "scripted", "reescrita pelo QA", now);
     pkg = applyDraft(pkg, draft, platforms, env, slot.style);
 
+    // Reserva já as mídias escolhidas: os pacotes em paralelo veem o rodízio na hora.
+    for (const r of pkg.libraryRefs) env.recentUses.set(r, (env.recentUses.get(r) ?? 0) + 1);
     const rendered = await render(ctx, env, pkg, simRun);
     pkg = transition(rendered.pkg, "rendered", undefined, now);
 
@@ -397,10 +400,15 @@ export async function produce(ctx: Ctx, opts: ProduceOptions = {}): Promise<{ cr
 
   const library = await ctx.store.library();
   const meta = await ctx.store.libraryMeta();
+  // Rodízio: o que apareceu nos 8 pacotes mais recentes da fila/agenda já conta como uso.
+  const recentUses = new Map<string, number>();
+  for (const p of all.filter((x) => ["pending_review", "scheduled", "published"].includes(x.status)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 8)) {
+    for (const r of p.libraryRefs) recentUses.set(r, (recentUses.get(r) ?? 0) + 1);
+  }
   const env: Env = {
     renderer: new Renderer(),
     library,
-    catalog: libraryCatalog(library),
+    recentUses,
     avatar: meta.avatar ? fileUrl(join(ctx.libraryDir, meta.avatar)) : undefined,
   };
   let created = 0;

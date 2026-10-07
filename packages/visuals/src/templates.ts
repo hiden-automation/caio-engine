@@ -227,7 +227,7 @@ export function body(slide: Slide, ctx: SlideContext): string {
       const gen = Number(arg ?? 0);
       const rec = ctx.sim.history[Math.min(gen, ctx.sim.history.length - 1)]!;
       return `<h2 style="font-size:${fit(slide.title, [[40, 60], [999, 50]])}px">${title}</h2>
-        <div class="sim" data-sim>${routeSvg(ctx.sim, gen, ctx.tokens, story ? 900 : 760, simColors(ctx))}</div>
+        <div class="sim" data-sim>${routeSvg(ctx.sim, gen, ctx.tokens, story ? 900 : slide.body ? 600 : 720, simColors(ctx))}</div>
         <div class="stats"><span>geração <b data-gen>${rec.gen}</b></span><span>rota <b data-km>${rec.bestKm.toLocaleString("pt-BR")} km</b></span></div>
         ${slide.body ? `<p class="small">${text}</p>` : ""}`;
     }

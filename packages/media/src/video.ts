@@ -34,7 +34,8 @@ export async function clipFrames(clip: string, outDir: string, startSec: number,
 export async function encodeReel(framesPattern: string, fps: number, audio: string | undefined, dst: string): Promise<void> {
   const args = ["-v", "error", "-y", "-framerate", String(fps), "-i", framesPattern];
   if (audio) args.push("-i", audio);
-  args.push("-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart");
+  // Teto de bitrate: arquivo leve para o PWA carregar no celular, qualidade de sobra para o Reels.
+  args.push("-c:v", "libx264", "-preset", "medium", "-crf", "21", "-maxrate", "4M", "-bufsize", "8M", "-pix_fmt", "yuv420p", "-movflags", "+faststart");
   if (audio) args.push("-c:a", "aac", "-b:a", "160k", "-shortest");
   args.push(dst);
   await run(FFMPEG, args);

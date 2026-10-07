@@ -597,3 +597,47 @@ export async function produce(ctx: Ctx, opts: ProduceOptions = {}): Promise<{ cr
   log("produce.done", { created, discarded });
   return { created, discarded };
 }
+
+/**
+ * Refaz só as artes e os vídeos dos pacotes que estão na fila, com o mesmo
+ * texto (sem chamar o roteirista): serve para corrigir nome, layout ou um
+ * render que falhou sem perder o conteúdo aprovado pelo revisor.
+ */
+export async function rerender(ctx: Ctx): Promise<{ done: number; failed: number }> {
+  const pending = await ctx.store.listPackages(["pending_review"]);
+  const library = await ctx.store.library();
+  const meta = await ctx.store.libraryMeta();
+  const env: Env = {
+    renderer: new Renderer(),
+    library,
+    recentUses: new Map(),
+    avatar: meta.avatar ? fileUrl(join(ctx.libraryDir, meta.avatar)) : undefined,
+  };
+  const brand = await ctx.brand();
+  let done = 0;
+  let failed = 0;
+  try {
+    for (const pkg of pending) {
+      let react: ReactSourceReady | undefined;
+      try {
+        const sim = pkg.simulation ? runGeneticTsp(SP_BAIRROS, { seed: pkg.simulation.seed, generations: pkg.simulation.generations }) : undefined;
+        if (pkg.format === "react" && pkg.reactSource?.path) {
+          react = await prepareReact(ctx.llm(), brand, "", { downloadUrl: pkg.reactSource.path, credit: pkg.reactSource.credit, url: pkg.reactSource.url }, { describe: false });
+        }
+        const r = await render(ctx, env, pkg, sim, react);
+        await ctx.store.savePackage({ ...r.pkg, updatedAt: ctx.now.toISOString() });
+        done++;
+        log("rerender.ok", { pkg: pkg.id, format: pkg.format });
+      } catch (err) {
+        failed++;
+        logError("rerender", err, { pkg: pkg.id });
+      } finally {
+        if (react) await rm(react.work, { recursive: true, force: true });
+      }
+    }
+  } finally {
+    await env.renderer.close();
+  }
+  log("rerender.done", { done, failed });
+  return { done, failed };
+}

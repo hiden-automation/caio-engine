@@ -79,7 +79,7 @@ const NARRATION = `NARRAÇÃO (campo "narration" de cada cena): é o que o locut
 export const FORMAT_SPECS: Record<string, string> = {
   carousel: `CARROSSEL: 6 a 8 slides. Slide 1 = capa com o gancho (promessa clara). Slides do meio: uma ideia por slide, na ordem lógica; até 30 palavras no body. Penúltimo: a conclusão (o que muda para a pessoa). Último: "cta". Em "narration" use "" (carrossel não tem narração).`,
   algoviz: `ALGOVIZ (carrossel com simulação real de algoritmo genético): 6 a 8 slides. Conte a história da execução com os DADOS FORNECIDOS — números exatamente iguais aos dados. Explique o algoritmo de forma simples (população, seleção, cruzamento, mutação) e a curiosidade principal (por que funciona). Use "sim:<geração>" nos slides que mostram a rota. Último: "cta". "narration" = "".`,
-  slideshow: `REEL NARRADO (vídeo vertical de 25 a 45 s com locutor, legenda sincronizada e trilha). 5 a 8 cenas:
+  slideshow: `REEL NARRADO (vídeo vertical de 30 a 45 s com locutor, legenda sincronizada e trilha). 5 a 7 cenas. A NARRAÇÃO INTEIRA (somando as cenas) tem de 80 a 115 palavras — conte; reel longo perde a audiência:
 - Cena 1 = gancho: title até 8 palavras; narração começa direto no assunto e faz uma promessa clara.
 - Cenas do meio: title curto (até 8 palavras), body vazio ou até 12 palavras; a narração explica.
 - Penúltima: conclusão. Última: "cta" (a narração chama para seguir/salvar).
@@ -87,7 +87,7 @@ export const FORMAT_SPECS: Record<string, string> = {
 - durationSec = 0 (o tempo vem da narração).
 ${NARRATION}
 - A legenda do Instagram complementa a narração em 2–4 frases e termina com pergunta ou CTA.`,
-  react: `REACT EM TELA DIVIDIDA (reel de 25 a 50 s): em cima, o trecho do vídeo de terceiro; embaixo, o Caio comentando. 4 a 6 cenas, nesta ordem:
+  react: `REACT EM TELA DIVIDIDA (reel de 30 a 50 s; narração total de 60 a 100 palavras): em cima, o trecho do vídeo de terceiro; embaixo, o Caio comentando. 4 a 6 cenas, nesta ordem:
 - Cena 1: visual "react:intro" — o gancho: por que esse vídeo importa (narração curta).
 - Cena 2: visual "react:clip:<inicio>-<fim>" (segundos do vídeo-fonte, trecho de 6 a 15 s, escolha o melhor momento pela descrição) — narration "" (toca o áudio original); title curto do que acontece.
 - Cenas 3 a 5: visual "react:comentario" — o comentário do Caio: explique o que está por trás, dê opinião e a lição prática.

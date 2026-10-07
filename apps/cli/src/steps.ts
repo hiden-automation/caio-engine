@@ -84,6 +84,7 @@ export async function prepareReact(
   brand: BrandContext,
   query: string,
   ref?: { file?: string; downloadUrl?: string; credit: string; url?: string },
+  opts: { describe?: boolean } = {},
 ): Promise<ReactSourceReady | undefined> {
   const work = await mkdtemp(join(tmpdir(), "jarvis-react-"));
   try {
@@ -124,6 +125,8 @@ export async function prepareReact(
     const file = join(work, "fonte.mp4");
     await prepareSource(raw, file, 120);
     const { durationSec } = await probe(file);
+    // Re-render (mesmo roteiro) não precisa que a IA assista de novo.
+    if (opts.describe === false) return { file, durationSec, credit, url, downloadUrl, description: "", moments: "", work };
     const times = Array.from({ length: 6 }, (_, k) => Math.max(0.2, (durationSec * (k + 0.5)) / 6));
     const frames = await framesAt(file, join(work, "quadros"), times);
     const brief = await describeSource(llm, brand, frames.map((f, k) => ({ file: f, atSec: times[k]! })), `${credit}; ${Math.round(durationSec)} s`);

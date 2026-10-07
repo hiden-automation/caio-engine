@@ -154,3 +154,6 @@ textarea:focus, input:focus { outline: 2px solid var(--accent); outline-offset: 
 .disc-thumb{flex:0 0 72px;width:72px}
 .disc-thumb .img{width:72px;height:auto;border-radius:8px}
 .issues{margin:6px 0 0 18px;font-size:12px;color:#c9cfdb;line-height:1.4}
+
+.video.placeholder{position:relative;display:flex;align-items:center;justify-content:center}
+.vid-status{background:#000b;color:#fff;border-radius:999px;padding:8px 16px;font-size:13px}

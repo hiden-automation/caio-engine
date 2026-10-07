@@ -21,6 +21,10 @@ on:
       only:
         description: "só estes itens da matriz (ex.: 7,10,12)"
         default: ""
+      rerender:
+        description: só refazer artes/vídeos da fila (mesmo texto, sem IA)
+        type: boolean
+        default: false
 concurrency:
   group: jarvis-data
   cancel-in-progress: false
@@ -52,7 +56,10 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code --no-audit --no-fund
       - run: npm run -s jarvis -- reviews
       - run: npm run -s jarvis -- library
-      - run: |
+      - if: inputs.rerender
+        run: npm run -s jarvis -- rerender
+      - if: ${{ !inputs.rerender }}
+        run: |
           args=()
           [ -n "${{ inputs.count }}" ] && args+=(--count "${{ inputs.count }}")
           [ -n "${{ inputs.idea }}" ] && args+=(--idea "${{ inputs.idea }}")

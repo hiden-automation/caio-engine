@@ -7,7 +7,7 @@ import { writeFeed } from "./feed.ts";
 import { initData } from "./init-data.ts";
 import { processLibrary } from "./library.ts";
 import { optimize } from "./optimize.ts";
-import { produce } from "./produce.ts";
+import { produce, rerender } from "./produce.ts";
 import { publish } from "./publish.ts";
 import { applyReviews } from "./reviews.ts";
 import { snapshot } from "./snapshot.ts";
@@ -20,6 +20,7 @@ const HELP = `jarvis <comando> [opções]
   trends                        caça tendências → ideias (e via expressa)
   produce [--count N] [--idea ID] [--matrix] [--concurrency N]
                                 roteiro → arte → QA → fila do PWA (--matrix = teste em massa)
+  rerender                      refaz artes/vídeos da fila com o mesmo texto (sem IA)
   reviews                       aplica decisões do PWA e agenda os aprovados
   publish                       publica o que está no horário (JARVIS_DRY_RUN=1 simula)
   snapshot                      coleta métricas (1h, 6h, 24h, 72h, 7d)
@@ -71,6 +72,9 @@ async function main(): Promise<void> {
         matrix: values.matrix,
         concurrency: values.concurrency ? Number(values.concurrency) : undefined,
       });
+      break;
+    case "rerender":
+      await rerender(ctx);
       break;
     case "reviews":
       await applyReviews(ctx);

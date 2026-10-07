@@ -80,6 +80,30 @@ export function previewUrl(conn: Conn, path: string, ref = "previews"): Promise<
   return blobCache.get(key)!;
 }
 
+/** Baixa um arquivo grande (vídeo) mostrando o progresso. */
+export async function previewUrlProgress(conn: Conn, path: string, onProgress: (pct: number) => void, ref = "previews"): Promise<string> {
+  if (isDemo(conn)) return `./demo/previews/${path}`;
+  const key = `${conn.repo}:${ref}:${path}`;
+  const cached = blobCache.get(key);
+  if (cached) return cached;
+  const r = await gh(conn, `contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${ref}`, {}, "application/vnd.github.raw+json");
+  const total = Number(r.headers.get("content-length") ?? 0);
+  const reader = r.body?.getReader();
+  if (!reader) throw new Error("sem corpo na resposta");
+  const chunks: Uint8Array[] = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    got += value.length;
+    if (total) onProgress(Math.min(99, Math.round((got / total) * 100)));
+  }
+  const url = URL.createObjectURL(new Blob(chunks as BlobPart[], { type: path.endsWith(".mp4") ? "video/mp4" : "application/octet-stream" }));
+  blobCache.set(key, Promise.resolve(url));
+  return url;
+}
+
 function toBase64(text: string): string {
   const bytes = new TextEncoder().encode(text);
   let bin = "";

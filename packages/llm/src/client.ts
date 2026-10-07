@@ -137,7 +137,10 @@ export class Llm {
       cacheRead: res.usage?.cache_read_input_tokens ?? 0,
     });
     if (res.stop_reason === "refusal") throw new RefusedError(null);
-    if (res.is_error || res.structured_output == null) throw new EmptyOutputError(`claude -p falhou (${res.subtype ?? "sem saída estruturada"})`);
+    if (res.is_error || res.structured_output == null) {
+      const limit = /limit|quota|rate/i.test(`${res.subtype} ${String((res as { result?: unknown }).result ?? "")}`);
+      throw new EmptyOutputError(limit ? "limite de uso da assinatura atingido (volta sozinho quando a janela renova)" : `claude -p falhou (${res.subtype ?? "sem saída estruturada"})`);
+    }
     return req.schema.parse(res.structured_output) as z.infer<S>;
   }
 }

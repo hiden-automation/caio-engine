@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { previewUrl, type Conn } from "./github.ts";
+import { previewUrl, previewUrlProgress, type Conn } from "./github.ts";
 import { PILLAR_LABEL, PLATFORM_LABEL, type ContentPackage, type Review } from "./types.ts";
 
 const REJECT_REASONS = ["tema fraco", "fora da marca", "erro factual", "visual ruim", "repetido", "não é a minha opinião"];
@@ -23,15 +23,32 @@ export function Preview({ conn, path, alt }: { conn: Conn; path: string; alt: st
 function VideoPreview({ conn, path, poster }: { conn: Conn; path: string; poster?: string }) {
   const [src, setSrc] = useState<string>();
   const [cover, setCover] = useState<string>();
+  const [pct, setPct] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let alive = true;
-    previewUrl(conn, path).then((u) => alive && setSrc(u)).catch(() => undefined);
+    setFailed(false);
     if (poster) previewUrl(conn, poster).then((u) => alive && setCover(u)).catch(() => undefined);
+    previewUrlProgress(conn, path, (p) => alive && setPct(p))
+      .then((u) => alive && setSrc(u))
+      .catch(() => alive && setFailed(true));
     return () => {
       alive = false;
     };
-  }, [conn, path, poster]);
-  return src ? <video className="img video" src={src} poster={cover} controls playsInline loop preload="metadata" /> : <div className="img video placeholder shimmer" />;
+  }, [conn, path, poster, attempt]);
+  if (src) return <video className="img video" src={src} poster={cover} controls playsInline loop preload="metadata" />;
+  return (
+    <div className="img video placeholder" style={cover ? { backgroundImage: `url(${cover})`, backgroundSize: "cover" } : undefined}>
+      <div className="vid-status">
+        {failed ? (
+          <button className="btn" onClick={() => setAttempt((a) => a + 1)}>Não carregou · tentar de novo</button>
+        ) : (
+          <span>Carregando vídeo… {pct}%</span>
+        )}
+      </div>
+    </div>
+  );
 }
 
 const FORMAT_LABEL: Record<string, string> = { carousel: "carrossel", slideshow: "reel", story: "story", algoviz: "AlgoViz", text: "texto" };

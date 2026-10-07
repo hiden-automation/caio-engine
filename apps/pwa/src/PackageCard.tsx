@@ -21,12 +21,23 @@ export function Preview({ conn, path, alt }: { conn: Conn; path: string; alt: st
 }
 
 function VideoPreview({ conn, path, poster }: { conn: Conn; path: string; poster?: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [near, setNear] = useState(false);
+  useEffect(() => {
+    const el = box.current;
+    if (!el || near) return;
+    if (!("IntersectionObserver" in window)) return setNear(true);
+    const io = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && setNear(true), { rootMargin: "600px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [near]);
   const [src, setSrc] = useState<string>();
   const [cover, setCover] = useState<string>();
   const [pct, setPct] = useState(0);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    if (!near) return;
     let alive = true;
     setFailed(false);
     if (poster) previewUrl(conn, poster).then((u) => alive && setCover(u)).catch(() => undefined);
@@ -36,10 +47,10 @@ function VideoPreview({ conn, path, poster }: { conn: Conn; path: string; poster
     return () => {
       alive = false;
     };
-  }, [conn, path, poster, attempt]);
+  }, [conn, path, poster, attempt, near]);
   if (src) return <video className="img video" src={src} poster={cover} controls playsInline loop preload="metadata" />;
   return (
-    <div className="img video placeholder" style={cover ? { backgroundImage: `url(${cover})`, backgroundSize: "cover" } : undefined}>
+    <div ref={box} className="img video placeholder" style={cover ? { backgroundImage: `url(${cover})`, backgroundSize: "cover" } : undefined}>
       <div className="vid-status">
         {failed ? (
           <button className="btn" onClick={() => setAttempt((a) => a + 1)}>Não carregou · tentar de novo</button>
@@ -63,7 +74,22 @@ function timeLeft(iso?: string): string | null {
 
 export type Decision = Omit<Review, "at">;
 
-export function PackageCard({ conn, pkg, onDecide }: { conn: Conn; pkg: ContentPackage; onDecide: (d: Decision) => Promise<void> }) {
+/** Onde o card aparece: fila (decidir), agenda (rever/tirar) ou rejeitados (rever/recuperar). */
+export type CardMode = "pending" | "scheduled" | "rejected";
+
+function fmtWhen(iso: string): string {
+  return new Date(iso).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+}
+
+/** Por que o pacote está em Rejeitados. */
+function rejectedLabel(pkg: ContentPackage): string {
+  const note = [...pkg.history].reverse().find((h) => h.to === pkg.status)?.note;
+  if (pkg.status === "expired") return "expirou sem aprovação";
+  if (pkg.status === "discarded") return `reprovado pelo revisor${pkg.qa ? ` · nota ${pkg.qa.score.toFixed(1)}` : ""}`;
+  return `você rejeitou${note ? `: ${note}` : ""}`;
+}
+
+export function PackageCard({ conn, pkg, onDecide, mode: where = "pending" }: { conn: Conn; pkg: ContentPackage; onDecide: (d: Decision) => Promise<void>; mode?: CardMode }) {
   const [tab, setTab] = useState(pkg.variants[0]?.id ?? "");
   const [captions, setCaptions] = useState<Record<string, string>>(() => Object.fromEntries(pkg.variants.map((v) => [v.id, v.caption])));
   const [enabled, setEnabled] = useState<Record<string, boolean>>(() => Object.fromEntries(pkg.variants.map((v) => [v.id, true])));
@@ -77,7 +103,9 @@ export function PackageCard({ conn, pkg, onDecide }: { conn: Conn; pkg: ContentP
   const images = video ? [] : pkg.assets.filter((a) => a.kind === "image").sort((a, b) => a.order - b.order);
   const posterPath = pkg.assets.find((a) => a.role === "cover")?.path;
   const variant = pkg.variants.find((v) => v.id === tab);
-  const left = timeLeft(pkg.expiresAt);
+  const left = where === "pending" ? timeLeft(pkg.expiresAt) : null;
+  const readOnly = where === "scheduled";
+  const canApprove = where !== "scheduled" && (pkg.assets.length > 0 || pkg.format === "text");
 
   async function decide(d: Omit<Decision, "packageId" | "variantToggles" | "captionEdits" | "schedule">) {
     setBusy(true);
@@ -102,8 +130,8 @@ export function PackageCard({ conn, pkg, onDecide }: { conn: Conn; pkg: ContentP
     if (Math.abs(ddx) > Math.abs(e.clientY - start.current.y)) setDx(ddx);
   };
   const onPointerUp = () => {
-    if (start.current && dx > 120 && !busy) void decide({ decision: "approve" });
-    else if (start.current && dx < -120) setMode("reject");
+    if (start.current && dx > 120 && !busy && canApprove) void decide({ decision: "approve" });
+    else if (start.current && dx < -120 && where !== "rejected") setMode("reject");
     start.current = null;
     setDx(0);
   };
@@ -129,6 +157,19 @@ export function PackageCard({ conn, pkg, onDecide }: { conn: Conn; pkg: ContentP
           {pkg.qa && <span className="chip">QA {pkg.qa.score.toFixed(1)}</span>}
           {left && <span className={`chip ${pkg.express ? "hot" : ""}`}>expira em {left}</span>}
         </div>
+        {where === "scheduled" && (
+          <div className="chips when">
+            {pkg.variants
+              .filter((v) => v.scheduledAt && v.status === "approved")
+              .map((v) => (
+                <span key={v.id} className="chip ok">📅 {PLATFORM_LABEL[v.platform]} · {fmtWhen(v.scheduledAt!)}</span>
+              ))}
+          </div>
+        )}
+        {where === "rejected" && <p className="status-bad">{rejectedLabel(pkg)}</p>}
+        {where === "rejected" && pkg.status === "discarded" && !!pkg.qa?.issues.length && (
+          <ul className="issues">{pkg.qa.issues.slice(0, 4).map((i, k) => <li key={k}>{i}</li>)}</ul>
+        )}
         <h2>{pkg.chosenHook || pkg.topic}</h2>
         {pkg.angle && <p className="muted">{pkg.angle}</p>}
       </header>
@@ -158,11 +199,12 @@ export function PackageCard({ conn, pkg, onDecide }: { conn: Conn; pkg: ContentP
       {variant && (
         <section className="variant">
           <label className="toggle">
-            <input type="checkbox" checked={enabled[variant.id]} onChange={(e) => setEnabled({ ...enabled, [variant.id]: e.target.checked })} />
+            <input type="checkbox" disabled={readOnly} checked={enabled[variant.id]} onChange={(e) => setEnabled({ ...enabled, [variant.id]: e.target.checked })} />
             <span>Publicar no {PLATFORM_LABEL[variant.platform]} ({variant.kind})</span>
           </label>
           {variant.kind !== "story" && (
             <textarea
+              readOnly={readOnly}
               value={captions[variant.id]}
               rows={Math.min(12, Math.max(4, Math.ceil((captions[variant.id]?.length ?? 0) / 38)))}
               onChange={(e) => setCaptions({ ...captions, [variant.id]: e.target.value })}
@@ -213,12 +255,25 @@ export function PackageCard({ conn, pkg, onDecide }: { conn: Conn; pkg: ContentP
         </div>
       )}
 
-      {mode === "idle" && (
+      {mode === "idle" && where === "pending" && (
         <footer className="actions">
           <button className="btn danger" disabled={busy} onClick={() => setMode("reject")}>Rejeitar</button>
           <button className="btn" disabled={busy} onClick={() => setMode("edit")}>Ajustar</button>
           <button className="btn primary" disabled={busy || !Object.values(enabled).some(Boolean)} onClick={() => decide({ decision: "approve" })}>
             {busy ? "Enviando…" : "Aprovar"}
+          </button>
+        </footer>
+      )}
+      {mode === "idle" && where === "scheduled" && (
+        <footer className="actions">
+          <button className="btn danger" disabled={busy} onClick={() => setMode("reject")}>{busy ? "Enviando…" : "Rejeitar (tirar da agenda)"}</button>
+        </footer>
+      )}
+      {mode === "idle" && where === "rejected" && (
+        <footer className="actions">
+          {pkg.status === "rejected" && <button className="btn" disabled={busy} onClick={() => setMode("edit")}>Ajustar</button>}
+          <button className="btn primary" disabled={busy || !canApprove || !Object.values(enabled).some(Boolean)} onClick={() => decide({ decision: "approve" })}>
+            {busy ? "Enviando…" : canApprove ? "Aprovar mesmo assim" : "Sem arte para aprovar"}
           </button>
         </footer>
       )}

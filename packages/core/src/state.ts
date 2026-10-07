@@ -7,14 +7,15 @@ const TRANSITIONS: Record<PackageStatus, PackageStatus[]> = {
   qa_passed: ["pending_review"],
   pending_review: ["approved", "rejected", "edit_requested", "expired"],
   edit_requested: ["scripted", "discarded"],
-  approved: ["scheduled", "expired"],
-  scheduled: ["publishing", "approved", "expired"],
+  approved: ["scheduled", "expired", "rejected"],
+  scheduled: ["publishing", "approved", "expired", "rejected"],
   publishing: ["published", "scheduled", "failed"],
   published: [],
   failed: ["scheduled", "discarded"],
-  rejected: [],
-  expired: [],
-  discarded: [],
+  // O Caio pode mudar de ideia: rejeitado, expirado ou reprovado pelo revisor ainda pode ser aprovado.
+  rejected: ["approved", "edit_requested"],
+  expired: ["approved"],
+  discarded: ["approved"],
 };
 
 export class InvalidTransitionError extends Error {

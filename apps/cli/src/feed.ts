@@ -1,7 +1,7 @@
 import type { ContentPackage } from "@jarvis/core";
 import type { Ctx } from "./context.ts";
 
-/** Resumo de um pacote agendado/publicado para Agenda e Painel. */
+/** Resumo de um pacote publicado para a Agenda e o Painel. */
 function summary(p: ContentPackage) {
   return {
     id: p.id,
@@ -30,6 +30,9 @@ function summary(p: ContentPackage) {
 export async function writeFeed(ctx: Ctx): Promise<void> {
   const pkgs = await ctx.store.listPackages();
   const byNewest = (a: ContentPackage, b: ContentPackage) => b.createdAt.localeCompare(a.createdAt);
+  // As artes ficam na branch previews por 14 dias depois do fim (gc.ts).
+  const recentCutoff = ctx.now.getTime() - 13 * 86_400_000;
+  const firstSlot = (p: ContentPackage) => p.variants.map((v) => v.scheduledAt ?? "").filter(Boolean).sort()[0] ?? "";
   const readOptional = async (rel: string) => ((await ctx.store.exists(rel)) ? JSON.parse(await ctx.store.readText(rel)) : null);
 
   await ctx.store.writeJson("pwa/feed.json", {
@@ -37,12 +40,12 @@ export async function writeFeed(ctx: Ctx): Promise<void> {
     pending: pkgs
       .filter((p) => p.status === "pending_review")
       .sort((a, b) => Number(b.express) - Number(a.express) || byNewest(a, b)),
-    scheduled: pkgs.filter((p) => p.status === "scheduled").map(summary),
-    discarded: pkgs
-      .filter((p) => p.status === "discarded")
-      .sort(byNewest)
-      .slice(0, 15)
-      .map((p) => ({ ...summary(p), hook: p.chosenHook, style: p.style, score: p.qa?.score, issues: p.qa?.issues.slice(0, 4) ?? [], video: p.assets.find((a) => a.kind === "video")?.path })),
+    // Agenda e Rejeitados mostram o conteúdo completo (dá para rever, tirar da agenda ou recuperar).
+    scheduled: pkgs.filter((p) => p.status === "scheduled").sort((a, b) => firstSlot(a).localeCompare(firstSlot(b))),
+    rejected: pkgs
+      .filter((p) => (p.status === "rejected" || p.status === "expired" || p.status === "discarded") && new Date(p.updatedAt).getTime() > recentCutoff)
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, 40),
     published: pkgs
       .filter((p) => p.status === "published" || p.status === "failed")
       .sort(byNewest)

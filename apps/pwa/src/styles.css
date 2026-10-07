@@ -33,11 +33,11 @@ main { flex: 1; padding: 0 16px calc(env(safe-area-inset-bottom) + 88px); }
 
 .bottom {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
-  display: grid; grid-template-columns: repeat(5, 1fr);
+  display: grid; grid-template-columns: repeat(6, 1fr);
   padding: 8px 8px calc(env(safe-area-inset-bottom) + 8px);
   background: var(--surface); border-top: 1px solid #ffffff10;
 }
-.bottom button { background: none; border: 0; padding: 10px 4px; border-radius: 12px; color: var(--muted); font-size: 14px; }
+.bottom button { background: none; border: 0; padding: 10px 2px; border-radius: 12px; color: var(--muted); font-size: 12.5px; }
 .bottom button.on { color: var(--fg); background: var(--surface-2); }
 
 .list { display: flex; flex-direction: column; gap: 14px; padding-top: 4px; }
@@ -157,3 +157,7 @@ textarea:focus, input:focus { outline: 2px solid var(--accent); outline-offset: 
 
 .video.placeholder{position:relative;display:flex;align-items:center;justify-content:center}
 .vid-status{background:#000b;color:#fff;border-radius:999px;padding:8px 16px;font-size:13px}
+
+.chips.when{margin-top:6px}
+.status-bad{margin:6px 0 0;font-size:13px;color:var(--danger)}
+.slot-time{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:13px;color:var(--muted);margin:4px 0 -6px}

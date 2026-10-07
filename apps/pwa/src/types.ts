@@ -26,9 +26,10 @@ export interface PackageSummary {
 export interface Feed {
   generatedAt: string;
   pending: ContentPackage[];
-  scheduled: PackageSummary[];
-  /** Reprovados pelo revisor automático (para auditar o QA). */
-  discarded?: (PackageSummary & { hook?: string; style?: string; score?: number; issues: string[]; video?: string })[];
+  /** Agendados, com o conteúdo completo (dá para rever e tirar da agenda). */
+  scheduled: ContentPackage[];
+  /** Rejeitados por ele, expirados e reprovados pelo revisor (dá para recuperar). */
+  rejected?: ContentPackage[];
   published: PackageSummary[];
   counts: Record<string, number>;
   spendBrl: number;

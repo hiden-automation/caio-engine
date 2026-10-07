@@ -22,6 +22,12 @@ describe("máquina de estados", () => {
     expect(() => transition(fakePackage({ status: "pending_review" }), "publishing")).toThrow(InvalidTransitionError);
   });
 
+  it("agendado pode ser rejeitado e rejeitado pode voltar a ser aprovado", () => {
+    const p = transition(fakePackage({ status: "scheduled" }), "rejected", "mudei de ideia");
+    expect(transition(p, "approved").status).toBe("approved");
+    expect(canTransition("published", "rejected")).toBe(false);
+  });
+
   it("pedido de ajuste volta para o roteirista", () => {
     const p = transition(fakePackage({ status: "pending_review" }), "edit_requested", "mais curto");
     expect(transition(p, "scripted").status).toBe("scripted");

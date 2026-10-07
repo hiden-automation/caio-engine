@@ -1,6 +1,13 @@
-import { log, logError, transition, type ContentPackage } from "@jarvis/core";
+import { log, logError, transition, type ContentPackage, type PackageStatus, type Review } from "@jarvis/core";
 import type { Ctx } from "./context.ts";
-import { scheduleVariants, takenSlots } from "./schedule.ts";
+import { scheduleVariants, slotKey, takenSlots } from "./schedule.ts";
+
+/** De onde cada decisão pode partir: fila, agenda (tirar) e rejeitados (recuperar). */
+const ALLOWED_FROM: Record<Review["decision"], PackageStatus[]> = {
+  approve: ["pending_review", "rejected", "expired", "discarded"],
+  reject: ["pending_review", "approved", "scheduled"],
+  edit: ["pending_review", "rejected"],
+};
 
 /**
  * Aplica as decisões tomadas no PWA (arquivos em reviews/) e expira o que
@@ -17,7 +24,7 @@ export async function applyReviews(ctx: Ctx): Promise<{ applied: number; expired
   for (const { file, review } of pending) {
     const pkg = byId.get(review.packageId);
     try {
-      if (!pkg || pkg.status !== "pending_review") {
+      if (!pkg || !ALLOWED_FROM[review.decision].includes(pkg.status)) {
         log("reviews.ignored", { pkg: review.packageId, status: pkg?.status ?? "inexistente" });
         await ctx.store.archiveReview(file);
         continue;
@@ -37,7 +44,10 @@ export async function applyReviews(ctx: Ctx): Promise<{ applied: number; expired
         next = scheduleVariants(next, strategy, taken, ctx.now);
         next = transition(next, "scheduled", undefined, ctx.now);
       } else if (review.decision === "reject") {
-        next = transition(pkg, "rejected", review.reason, ctx.now);
+        // Saindo da agenda: libera os horários e volta as variantes para rascunho.
+        for (const v of pkg.variants) if (v.scheduledAt) taken.get(slotKey(v))?.delete(v.scheduledAt);
+        const variants = pkg.variants.map((v) => (v.status === "approved" ? { ...v, status: "draft" as const, scheduledAt: undefined } : v));
+        next = transition({ ...pkg, variants }, "rejected", review.reason, ctx.now);
       } else {
         next = transition({ ...pkg, editRequests: [...pkg.editRequests, { at: review.at, note: review.note ?? review.reason ?? "" }] }, "edit_requested", undefined, ctx.now);
       }

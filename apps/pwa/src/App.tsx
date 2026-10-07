@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { checkConn, createJson, getJson, loadConn, saveConn, type Conn } from "./github.ts";
 import { Library } from "./Library.tsx";
-import { PackageCard, Preview, type Decision } from "./PackageCard.tsx";
-import { PILLAR_LABEL, PLATFORM_LABEL, type Feed, type PackageSummary } from "./types.ts";
+import { PackageCard, type CardMode, type Decision } from "./PackageCard.tsx";
+import { PILLAR_LABEL, PLATFORM_LABEL, type ContentPackage, type Feed, type PackageSummary } from "./types.ts";
 
-type Tab = "fila" | "agenda" | "base" | "ideias" | "painel";
+type Tab = "fila" | "agenda" | "rejeitados" | "base" | "ideias" | "painel";
+const TAB_LABEL: Record<Tab, string> = { fila: "Fila", agenda: "Agenda", rejeitados: "Rejeitados", base: "Base", ideias: "Ideias", painel: "Painel" };
+
+type OnDecide = (d: Decision, from: CardMode) => Promise<void>;
 
 const DECIDED_KEY = "jarvis.decided";
 const DECIDED_TTL = 30 * 60_000;
@@ -74,26 +77,27 @@ function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
 }
 
-function Agenda({ feed }: { feed: Feed }) {
-  const items = feed.scheduled
-    .flatMap((p) => p.variants.filter((v) => v.scheduledAt && v.status === "approved").map((v) => ({ p, v })))
-    .sort((a, b) => a.v.scheduledAt!.localeCompare(b.v.scheduledAt!));
-  const days = new Map<string, typeof items>();
-  for (const it of items) {
-    const d = fmtDay(it.v.scheduledAt!);
-    days.set(d, [...(days.get(d) ?? []), it]);
+function firstSlot(p: ContentPackage): string {
+  return p.variants.filter((v) => v.scheduledAt && v.status === "approved").map((v) => v.scheduledAt!).sort()[0] ?? "";
+}
+
+function Agenda({ feed, conn, hidden, onDecide }: { feed: Feed; conn: Conn; hidden: Set<string>; onDecide: OnDecide }) {
+  const items = feed.scheduled.filter((p) => firstSlot(p) && !hidden.has(`scheduled:${p.id}`)).sort((a, b) => firstSlot(a).localeCompare(firstSlot(b)));
+  const days = new Map<string, ContentPackage[]>();
+  for (const p of items) {
+    const d = fmtDay(firstSlot(p));
+    days.set(d, [...(days.get(d) ?? []), p]);
   }
   return (
     <section className="list">
       {!items.length && <p className="empty">Nada agendado. Aprove algo na fila.</p>}
       {[...days].map(([day, list]) => (
-        <div key={day}>
+        <div key={day} className="list">
           <h3 className="day">{day}</h3>
-          {list.map(({ p, v }) => (
-            <div key={`${p.id}-${v.id}`} className="row-item">
-              <span className="time">{fmtTime(v.scheduledAt!)}</span>
-              <span className="chip">{PLATFORM_LABEL[v.platform]}</span>
-              <span className="grow">{p.topic}</span>
+          {list.map((p) => (
+            <div key={p.id} className="list">
+              <p className="slot-time">{fmtTime(firstSlot(p))}</p>
+              <PackageCard conn={conn} pkg={p} mode="scheduled" onDecide={(d) => onDecide(d, "scheduled")} />
             </div>
           ))}
         </div>
@@ -115,6 +119,31 @@ function Agenda({ feed }: { feed: Feed }) {
           </span>
         </div>
       ))}
+    </section>
+  );
+}
+
+function Rejected({ feed, conn, hidden, onDecide }: { feed: Feed; conn: Conn; hidden: Set<string>; onDecide: OnDecide }) {
+  const all = (feed.rejected ?? []).filter((p) => !hidden.has(`rejected:${p.id}`));
+  const groups: [string, string, ContentPackage[]][] = [
+    ["Rejeitados por você", "", all.filter((p) => p.status === "rejected")],
+    ["Expiraram sem aprovação", "", all.filter((p) => p.status === "expired")],
+    ["Reprovados pelo revisor", "O revisor automático barrou antes da fila. Se discordar, aprove mesmo assim.", all.filter((p) => p.status === "discarded")],
+  ];
+  return (
+    <section className="list">
+      {!all.length && <p className="empty">Nada rejeitado nos últimos 14 dias.</p>}
+      {groups
+        .filter(([, , list]) => list.length)
+        .map(([title, hint, list]) => (
+          <div key={title} className="list">
+            <h3 className="day">{title} ({list.length})</h3>
+            {hint && <p className="muted small">{hint}</p>}
+            {list.map((p) => (
+              <PackageCard key={p.id} conn={conn} pkg={p} mode="rejected" onDecide={(d) => onDecide(d, "rejected")} />
+            ))}
+          </div>
+        ))}
     </section>
   );
 }
@@ -249,21 +278,28 @@ export function App() {
 
   if (!conn) return <Setup onDone={setConn} />;
 
-  async function decide(d: Decision) {
+  async function decide(d: Decision, from: CardMode = "pending") {
     // A lista pode estar velha (app aberto há horas): confere antes de gravar a decisão.
     const fresh = await getJson<Feed>(conn!, "pwa/feed.json");
-    if (!fresh.pending.some((p) => p.id === d.packageId)) {
+    const list = from === "pending" ? fresh.pending : from === "scheduled" ? fresh.scheduled : (fresh.rejected ?? []);
+    if (!list.some((p) => p.id === d.packageId)) {
       setFeed(fresh);
-      toast("Esse pacote não está mais na fila (expirou ou foi substituído). Atualizei a lista.");
+      toast(from === "scheduled" ? "Esse post já saiu da agenda (foi publicado ou mudou). Atualizei a lista." : "Esse pacote mudou de lugar desde a última atualização. Atualizei a lista.");
       return;
     }
     const at = new Date().toISOString();
     await createJson(conn!, `reviews/${d.packageId}-${Date.now()}.json`, { ...d, at }, `review: ${d.decision} ${d.packageId}`);
-    setDecided((s) => new Set(s).add(d.packageId));
-    toast(d.decision === "approve" ? "Aprovado ✓ — o motor agenda em instantes" : d.decision === "reject" ? "Rejeitado" : "Ajuste pedido: volta para a fila");
+    setDecided((s) => new Set(s).add(`${from}:${d.packageId}`));
+    toast(
+      d.decision === "approve"
+        ? from === "rejected" ? "Recuperado ✓ — entra na agenda em instantes" : "Aprovado ✓ — o motor agenda em instantes"
+        : d.decision === "reject"
+          ? from === "scheduled" ? "Tirado da agenda. Fica em Rejeitados se mudar de ideia." : "Rejeitado. Fica em Rejeitados se mudar de ideia."
+          : "Ajuste pedido: volta para a fila",
+    );
   }
 
-  const pending = feed?.pending.filter((p) => !decided.has(p.id)) ?? [];
+  const pending = feed?.pending.filter((p) => !decided.has(`pending:${p.id}`) && !decided.has(p.id)) ?? [];
 
   return (
     <div className="app">
@@ -278,28 +314,12 @@ export function App() {
           <section className="list">
             {pending.length === 0 && <p className="empty">Fila zerada. O JARVIS produz duas vezes por dia.</p>}
             {pending.map((p) => (
-              <PackageCard key={p.id} conn={conn} pkg={p} onDecide={decide} />
+              <PackageCard key={p.id} conn={conn} pkg={p} onDecide={(d) => decide(d, "pending")} />
             ))}
-            {!!feed.discarded?.length && (
-              <details className="discarded">
-                <summary>Reprovados pelo revisor ({feed.discarded.length}) — não chegam à fila</summary>
-                {feed.discarded.map((d) => (
-                  <div key={d.id} className="row-item col">
-                    <div className="disc-head">
-                      {d.cover && <div className="disc-thumb"><Preview conn={conn} path={d.cover} alt="capa" /></div>}
-                      <div>
-                        <b>{d.hook || d.topic}</b>
-                        <p className="muted small">{d.format} · {d.style} · nota {d.score?.toFixed(1)}</p>
-                      </div>
-                    </div>
-                    <ul className="issues">{d.issues.map((i, k) => <li key={k}>{i}</li>)}</ul>
-                  </div>
-                ))}
-              </details>
-            )}
           </section>
         )}
-        {feed && tab === "agenda" && <Agenda feed={feed} />}
+        {feed && tab === "agenda" && <Agenda feed={feed} conn={conn} hidden={decided} onDecide={decide} />}
+        {feed && tab === "rejeitados" && <Rejected feed={feed} conn={conn} hidden={decided} onDecide={decide} />}
         {tab === "base" && <Library conn={conn} toast={toast} />}
         {tab === "ideias" && <Ideas conn={conn} initial={shared} toast={toast} />}
         {feed && tab === "painel" && (
@@ -314,9 +334,9 @@ export function App() {
       </main>
       {msg && <div className="toast">{msg}</div>}
       <nav className="bottom">
-        {(["fila", "agenda", "base", "ideias", "painel"] as Tab[]).map((t) => (
+        {(Object.keys(TAB_LABEL) as Tab[]).map((t) => (
           <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
-            {t === "fila" ? `Fila${pending.length ? ` (${pending.length})` : ""}` : t[0]!.toUpperCase() + t.slice(1)}
+            {t === "fila" ? `Fila${pending.length ? ` (${pending.length})` : ""}` : TAB_LABEL[t]}
           </button>
         ))}
       </nav>

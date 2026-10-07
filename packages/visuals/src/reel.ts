@@ -36,6 +36,44 @@ export function reelTiming(scenes: Slide[]): ReelTiming {
   return { starts, ends, total: t + 0.4 };
 }
 
+/**
+ * Reel narrado: a legenda já mostra o que o locutor fala, então a tela não repete texto.
+ * Fica só o texto que É a demonstração (o pedido para a IA, a conversa, a fórmula,
+ * o gráfico...), o gancho da primeira cena (vira a capa) e a chamada final.
+ * Cena sem narração (ex.: trecho do vídeo no react) mantém o texto.
+ */
+export function reelScene(s: Slide, index: number, narrated: boolean): Slide {
+  if (!narrated) return s;
+  const [kind = "texto"] = (s.visual ?? "texto").split(":");
+  if (index === 0) return { ...s, body: "" };
+  switch (kind) {
+    case "prompt":
+    case "chat":
+    case "diagrama":
+    case "grafico":
+    case "comparacao":
+    case "post":
+    case "codigo":
+    case "terminal":
+      return { ...s, title: "" };
+    case "formula":
+    case "numero":
+    case "citacao":
+    case "cta":
+      return { ...s, body: "" };
+    case "imagem":
+    case "foto":
+    case "video":
+    case "eu":
+    case "react":
+    case "sim":
+      return { ...s, title: "", body: "" };
+    default:
+      // texto, lista, checklist, capa: no máximo um título curto.
+      return { ...s, body: "" };
+  }
+}
+
 /** Gerações mostradas numa cena "sim:A-B": progressão logarítmica (o começo muda mais). */
 function simFrames(run: GaRun, from: number, to: number, count: number): number[] {
   const out: number[] = [];
@@ -49,6 +87,15 @@ function simFrames(run: GaRun, from: number, to: number, count: number): number[
 
 const ANIMATE = `
 const clamp=(x)=>Math.max(0,Math.min(1,x));
+// Conteúdo maior que a área acima da legenda encolhe para caber (nunca invade a faixa da legenda).
+const fitAll=()=>{for(const el of document.querySelectorAll('section.slide')){
+  const c=el.querySelector('.content');if(!c||el.classList.contains('fullbleed'))continue;
+  const prev=el.style.display;el.style.display='flex';
+  const r=c.getBoundingClientRect();let top=Infinity,bot=-Infinity;
+  for(const k of c.children){if(getComputedStyle(k).position==='absolute')continue;const b=k.getBoundingClientRect();if(!b.height)continue;top=Math.min(top,b.top);bot=Math.max(bot,b.bottom);}
+  const need=bot-top;if(isFinite(need)&&need>r.height+2){const z=(r.height/need)*0.97;for(const k of c.children)k.style.zoom=z;}
+  el.style.display=prev;}};
+let fitted=false;
 const ease=(x)=>1-Math.pow(1-x,3);
 const scenes=[...document.querySelectorAll('section.slide')].map((el,i)=>{
   const anim=[...el.querySelectorAll('.content > *:not(.bleed):not(.cover-person):not(.split):not(.credit), .cover-text > *, .bleed-text, .list li, .check li, .node, .arrow, .msg, .crow, .col, .bubble, .talker, .cutout, .re-card, .re-cut')];
@@ -57,7 +104,8 @@ const scenes=[...document.querySelectorAll('section.slide')].map((el,i)=>{
   return {el,start:T.starts[i],end:T.ends[i],anim,kb:el.querySelector('.ph'),frames:el.querySelector('[data-frames]'),sim:el.querySelector('[data-sim]'),big,target,bigText:big?big.innerHTML:''};
 });
 scenes.forEach(s=>{if(s.frames){s.list=JSON.parse(s.frames.dataset.frames);}});
-window.__seek=async(t)=>{
+window.__seek=async(t,nocap)=>{
+  if(!fitted){await document.fonts.ready;fitAll();fitted=true;}
   const waits=[];
   for(const [i,s] of scenes.entries()){
     const local=t-s.start, dur=s.end-s.start;
@@ -83,9 +131,9 @@ window.__seek=async(t)=>{
     const a=Math.floor(k/4)*4;const chunk=W.slice(a,a+4);
     const html=chunk.map((w,j)=>a+j===k?'<b>'+w.w+'</b>':w.w).join(' ');
     if(cap.dataset.h!==html){cap.dataset.h=html;cap.innerHTML=html;}
-    cap.className=s.el.classList.contains('react')?'on react':'on';shown=true;break;
+    cap.className='on';shown=true;break;
   }
-  if(!shown)cap.className='';
+  if(!shown||nocap)cap.className='';
   await Promise.all(waits);
 };`;
 
@@ -131,7 +179,9 @@ export async function renderReel(renderer: Renderer, scenes: Slide[], opts: Reel
       scenes[i] = { ...s, visual: `sim:${gens[0]}` };
     }
   }
+  const narrated = (i: number) => Boolean(opts.captions?.[i]?.length);
   const sections = scenes
+    .map((s, i) => reelScene(s, i, narrated(i)))
     .map((s, i) => slideHtml(s, { index: i, total: scenes.length, canvas: "story", tokens: opts.tokens, look: opts.look, sim: opts.sim, motion: true }))
     .join("\n");
   const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">${fontLinks(opts.tokens)}
@@ -140,9 +190,13 @@ export async function renderReel(renderer: Renderer, scenes: Slide[], opts: Reel
   section.slide{position:absolute;inset:0}
   .ph{will-change:transform}
   #reel-prog{position:absolute;top:0;left:0;height:8px;background:${"var(--accent, #3DDC97)"};z-index:20}
-  #cap{position:absolute;left:70px;right:70px;top:1440px;z-index:30;text-align:center;font-family:'${opts.tokens.fonts.display}',sans-serif;font-weight:700;font-size:58px;line-height:1.2;color:#fff;opacity:0;
+  /* Faixa da legenda (1430–1640 px) é só dela: o conteúdo das cenas termina em 1360 px. */
+  .slide.story{padding-bottom:560px}
+  .bleed-text{bottom:auto !important;top:300px}
+  .talker{bottom:-560px !important;height:1100px !important}
+  #cap{position:absolute;left:70px;right:70px;top:1430px;z-index:30;text-align:center;font-family:'${opts.tokens.fonts.display}',sans-serif;font-weight:700;font-size:58px;line-height:1.2;color:#fff;opacity:0;
     text-shadow:0 4px 0 #000,0 0 18px #000c;-webkit-text-stroke:2px #000;paint-order:stroke fill}
-  #cap.on{opacity:1}#cap.react{top:880px}
+  #cap.on{opacity:1}
   #cap b{color:${PILLAR_ACCENT[opts.look.pillar].dark}}
   </style></head><body>${sections}<div id="reel-prog"></div><div id="cap"></div>
   <script>const T=${JSON.stringify(timing)};const SIM=${JSON.stringify(sims)};const CAP=${JSON.stringify(opts.captions ?? {})};${ANIMATE}</script></body></html>`;
@@ -162,7 +216,7 @@ export async function renderReel(renderer: Renderer, scenes: Slide[], opts: Reel
       await page.screenshot({ path: join(framesDir, `${String(f).padStart(5, "0")}.jpg`), type: "jpeg", quality: 88 });
     }
     // Capa: o gancho já montado (fim da primeira cena).
-    await page.evaluate((t) => (window as unknown as { __seek: (t: number) => Promise<void> }).__seek(t), Math.max(0, timing.ends[0]! - 0.3));
+    await page.evaluate((t) => (window as unknown as { __seek: (t: number, nocap?: boolean) => Promise<void> }).__seek(t, true), Math.max(0, timing.ends[0]! - 0.3));
     await page.screenshot({ path: cover, type: "jpeg", quality: 92 });
     const stillsDir = await mkdtemp(join(tmpdir(), "jarvis-stills-"));
     const stills: string[] = [];

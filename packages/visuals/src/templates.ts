@@ -164,7 +164,7 @@ export function body(slide: Slide, ctx: SlideContext): string {
     case "imagem": {
       if (!slide.image) break;
       return `<div class="bleed"><img class="ph kb" src="${slide.image.path}" alt=""><div class="shade"></div></div>
-        <div class="bleed-text"><h2 style="font-size:${fit(slide.title, [[40, 72], [80, 60], [999, 52]])}px">${title}</h2>${slide.body ? `<p>${text}</p>` : ""}</div>
+        ${cardOnPhoto(slide, title, text, [[40, 72], [80, 60], [999, 52]])}
         <div class="credit">${esc(slide.image.credit)}</div>`;
     }
     case "react": {
@@ -188,13 +188,13 @@ export function body(slide: Slide, ctx: SlideContext): string {
       if (!m) break;
       const frames = m.frames?.length ? ` data-frames='${JSON.stringify(m.frames).replaceAll("'", "&#39;")}'` : "";
       return `<div class="bleed"><img class="ph" src="${m.frames?.[0] ?? m.photo}"${frames} style="${photoStyle(m)}" alt=""><div class="shade"></div></div>
-        <div class="bleed-text"><h2 style="font-size:${fit(slide.title, [[40, 84], [80, 70], [999, 58]])}px">${title}</h2>${slide.body ? `<p>${text}</p>` : ""}</div>`;
+        ${cardOnPhoto(slide, title, text, [[40, 84], [80, 70], [999, 58]])}`;
     }
     case "foto": {
       if (!m) break;
       if (ctx.look.style === "hud" || story) {
         return `<div class="bleed"><img class="ph kb" src="${m.photo}" style="${photoStyle(m)}" alt=""><div class="shade"></div></div>
-          <div class="bleed-text"><h2 style="font-size:${fit(slide.title, [[40, 84], [80, 70], [999, 58]])}px">${title}</h2>${slide.body ? `<p>${text}</p>` : ""}</div>`;
+          ${cardOnPhoto(slide, title, text, [[40, 84], [80, 70], [999, 58]])}`;
       }
       return `<h2>${title}</h2><div class="framed"><img src="${m.photo}" style="${photoStyle(m)}" alt=""></div>${slide.body ? `<p class="small">${text}</p>` : ""}`;
     }
@@ -208,20 +208,20 @@ export function body(slide: Slide, ctx: SlideContext): string {
     }
     case "lista": {
       const items = lines(slide.body).map((l) => l.replace(/^[-•\d.)]+\s*/, ""));
-      return `<h2>${title}</h2><ol class="list">${items.map((i) => `<li>${rich(i)}</li>`).join("")}</ol>`;
+      return `${slide.title ? `<h2>${title}</h2>` : ""}<ol class="list">${items.map((i) => `<li>${rich(i)}</li>`).join("")}</ol>`;
     }
     case "checklist": {
       const items = lines(slide.body).map((l) => ({ ok: !l.startsWith("-"), t: l.replace(/^[+\-✓✗x]\s*/, "") }));
-      return `<h2>${title}</h2><ul class="check">${items.map((i) => `<li class="${i.ok ? "ok" : "no"}"><span>${i.ok ? "✓" : "✕"}</span><div>${rich(i.t)}</div></li>`).join("")}</ul>`;
+      return `${slide.title ? `<h2>${title}</h2>` : ""}<ul class="check">${items.map((i) => `<li class="${i.ok ? "ok" : "no"}"><span>${i.ok ? "✓" : "✕"}</span><div>${rich(i.t)}</div></li>`).join("")}</ul>`;
     }
     case "codigo":
-      return `<h2>${title}</h2>${slide.body ? `<p class="small">${text}</p>` : ""}<div class="window"><div class="bar3"><i></i><i></i><i></i><span>${esc(arg ?? "automacao.py")}</span></div><pre class="code">${highlight(slide.code ?? "")}</pre></div>`;
+      return `${slide.title ? `<h2>${title}</h2>` : ""}${slide.body ? `<p class="small">${text}</p>` : ""}<div class="window"><div class="bar3"><i></i><i></i><i></i><span>${esc(arg ?? "automacao.py")}</span></div><pre class="code">${highlight(slide.code ?? "")}</pre></div>`;
     case "terminal": {
       const out = (slide.code || slide.body)
         .split("\n")
         .map((l) => (l.startsWith("$") ? `<span class="cmd">${esc(l)}</span>` : l.startsWith("✓") || l.toLowerCase().startsWith("ok") ? `<span class="okl">${esc(l)}</span>` : esc(l)))
         .join("\n");
-      return `<h2>${title}</h2><div class="window term"><div class="bar3"><i></i><i></i><i></i><span>jarvis@caio ~ zsh</span></div><pre class="code">${out}<span class="caret">█</span></pre></div>${slide.code && slide.body ? `<p class="small">${text}</p>` : ""}`;
+      return `${slide.title ? `<h2>${title}</h2>` : ""}<div class="window term"><div class="bar3"><i></i><i></i><i></i><span>jarvis@caio ~ zsh</span></div><pre class="code">${out}<span class="caret">█</span></pre></div>${slide.code && slide.body ? `<p class="small">${text}</p>` : ""}`;
     }
     case "chat": {
       const msgs = lines(slide.body).map((l) => {
@@ -235,7 +235,7 @@ export function body(slide: Slide, ctx: SlideContext): string {
     }
     case "diagrama": {
       const steps = slide.body.split(/\n|->|→/).map((s) => s.trim()).filter(Boolean);
-      return `<h2>${title}</h2><div class="flow">${steps.map((s, i) => `<div class="node"><b>${String(i + 1).padStart(2, "0")}</b>${rich(s)}</div>${i < steps.length - 1 ? `<div class="arrow">↓</div>` : ""}`).join("")}</div>`;
+      return `${slide.title ? `<h2>${title}</h2>` : ""}<div class="flow">${steps.map((s, i) => `<div class="node"><b>${String(i + 1).padStart(2, "0")}</b>${rich(s)}</div>${i < steps.length - 1 ? `<div class="arrow">↓</div>` : ""}`).join("")}</div>`;
     }
     case "grafico": {
       const rows = lines(slide.body)
@@ -245,7 +245,7 @@ export function body(slide: Slide, ctx: SlideContext): string {
         })
         .filter((r) => r.label && Number.isFinite(r.value));
       const max = Math.max(1, ...rows.map((r) => r.value));
-      return `<h2>${title}</h2><div class="chart">${rows
+      return `${slide.title ? `<h2>${title}</h2>` : ""}<div class="chart">${rows
         .map((r, i) => `<div class="crow"><span class="cl">${rich(r.label)}</span><div class="ctrack"><div class="cbar${i === rows.length - 1 ? " last" : ""}" style="width:${Math.max(4, (r.value / max) * 100)}%"></div></div><span class="cv">${esc(r.raw)}</span></div>`)
         .join("")}</div>`;
     }
@@ -257,7 +257,7 @@ export function body(slide: Slide, ctx: SlideContext): string {
       const [pa = "", pb = ""] = slide.body.split("||");
       const a = side(pa, "antes");
       const b = side(pb, "depois");
-      return `<h2>${title}</h2><div class="cmp"><div class="col before"><span class="tag">${esc(a.tag)}</span>${rich(a.text)}</div><div class="col after"><span class="tag">${esc(b.tag)}</span>${rich(b.text)}</div></div>`;
+      return `${slide.title ? `<h2>${title}</h2>` : ""}<div class="cmp"><div class="col before"><span class="tag">${esc(a.tag)}</span>${rich(a.text)}</div><div class="col after"><span class="tag">${esc(b.tag)}</span>${rich(b.text)}</div></div>`;
     }
     case "numero":
       return `<div class="center"><div class="big">${title}</div><p class="lead">${text}</p></div>`;
@@ -279,13 +279,19 @@ export function body(slide: Slide, ctx: SlideContext): string {
       if (!ctx.sim) break;
       const gen = Number(arg ?? 0);
       const rec = ctx.sim.history[Math.min(gen, ctx.sim.history.length - 1)]!;
-      return `<h2 style="font-size:${fit(slide.title, [[40, 60], [999, 50]])}px">${title}</h2>
+      return `${slide.title ? `<h2 style="font-size:${fit(slide.title, [[40, 60], [999, 50]])}px">${title}</h2>` : ""}
         <div class="sim" data-sim>${routeSvg(ctx.sim, gen, ctx.tokens, story ? 900 : slide.body ? 600 : 720, simColors(ctx))}</div>
         <div class="stats"><span>geração <b data-gen>${rec.gen}</b></span><span>rota <b data-km>${rec.bestKm.toLocaleString("pt-BR")} km</b></span></div>
         ${slide.body ? `<p class="small">${text}</p>` : ""}`;
     }
   }
-  return `<h2 style="font-size:${fit(slide.title, [[50, 72], [90, 62], [999, 52]])}px">${title}</h2><p style="font-size:${fit(slide.body, [[120, 46], [220, 40], [999, 34]])}px">${text}</p>`;
+  return `<h2 style="font-size:${fit(slide.title, [[50, 72], [90, 62], [999, 52]])}px">${title}</h2>${slide.body ? `<p style="font-size:${fit(slide.body, [[120, 46], [220, 40], [999, 34]])}px">${text}</p>` : ""}`;
+}
+
+/** Texto sobre foto sempre num card; sem texto, sem card. */
+function cardOnPhoto(slide: Slide, title: string, text: string, sizes: [number, number][]): string {
+  if (!slide.title && !slide.body) return "";
+  return `<div class="bleed-text">${slide.title ? `<h2 style="font-size:${fit(slide.title, sizes)}px">${title}</h2>` : ""}${slide.body ? `<p>${text}</p>` : ""}</div>`;
 }
 
 export function simColors(ctx: Pick<SlideContext, "tokens" | "look">): { line: string; dot: string; home: string } {

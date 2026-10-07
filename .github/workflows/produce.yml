@@ -19,7 +19,7 @@ on:
         description: pacotes em paralelo
         default: "3"
       only:
-        description: "só estes itens da matriz (ex.: 7,10,12)"
+        description: "matriz: só estes itens (ex.: 7,10,12) · rerender: só estes formatos (ex.: slideshow,react)"
         default: ""
       rerender:
         description: só refazer artes/vídeos da fila (mesmo texto, sem IA)

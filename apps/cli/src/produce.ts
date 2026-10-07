@@ -603,8 +603,8 @@ export async function produce(ctx: Ctx, opts: ProduceOptions = {}): Promise<{ cr
  * texto (sem chamar o roteirista): serve para corrigir nome, layout ou um
  * render que falhou sem perder o conteúdo aprovado pelo revisor.
  */
-export async function rerender(ctx: Ctx): Promise<{ done: number; failed: number }> {
-  const pending = await ctx.store.listPackages(["pending_review"]);
+export async function rerender(ctx: Ctx, formats?: string[]): Promise<{ done: number; failed: number }> {
+  const pending = (await ctx.store.listPackages(["pending_review"])).filter((p) => !formats?.length || formats.includes(p.format));
   const library = await ctx.store.library();
   const meta = await ctx.store.libraryMeta();
   const env: Env = {

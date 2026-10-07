@@ -136,10 +136,10 @@ Primeiro, leia o conteúdo como um seguidor comum leria e escreva em messageUnde
 3. Afirmações factuais sem fonte em "sources" → blocking = true (enredo pop conhecido e conceito técnico consolidado não precisam).
 4. Gancho: promessa clara e interessante logo no primeiro slide/cena?
 5. Interessante: a pessoa aprende algo, se surpreende ou quer salvar/compartilhar?
-6. Soa como o Caio, natural, sem cara de texto de IA? Erros de português? Rótulos como "(exemplo ilustrativo)" são defeito.
+6. Soa como o Caio, natural, sem cara de texto de IA? Erros de português? Rótulos como "(exemplo ilustrativo)" são defeito. Exemplo forçado ou repetitivo (ex.: "clínica" de novo) é defeito. Tratar a IA com desdém ("é só estatística", "só autocompletar", "burra") é defeito: o Caio respeita a IA e vê o funcionamento dela como análogo ao do cérebro.
 7. Se cita algo visual (personagem, objeto), há imagem do assunto?
 8. Reels: a narração, lida em sequência, forma um texto coeso e natural?
-9. ${images.length ? "Olhe as imagens renderizadas: texto legível, nada cortado ou sobreposto, hierarquia clara, cara de marca pessoal (não de template genérico)? Problema visual grave → blocking." : "Os visuais escolhidos são variados e fazem sentido?"}
+9. ${images.length ? "Olhe as imagens renderizadas: texto legível, nada cortado ou sobreposto (em reel, texto da tela na mesma altura da legenda é problema grave), hierarquia clara, cara de marca pessoal (não de template genérico)? Problema visual grave → blocking." : "Os visuais escolhidos são variados e fazem sentido?"}
 
 Contexto das artes: as fotos e vídeos da base foram enviados pelo próprio Caio para uso no perfil. O nome, o @, o selo e o avatar no cabeçalho vêm da configuração da marca (não avalie). Imagens de terceiros têm licença livre e crédito automático.
 

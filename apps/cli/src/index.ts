@@ -74,7 +74,8 @@ async function main(): Promise<void> {
       });
       break;
     case "rerender":
-      await rerender(ctx);
+      // JARVIS_MATRIX_ONLY aqui = formatos (ex.: "slideshow,react").
+      await rerender(ctx, process.env.JARVIS_MATRIX_ONLY?.split(",").map((f) => f.trim()).filter(Boolean));
       break;
     case "reviews":
       await applyReviews(ctx);

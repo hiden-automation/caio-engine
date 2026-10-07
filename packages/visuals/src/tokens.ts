@@ -5,6 +5,8 @@ export const VisualTokens = z.object({
   name: z.string().default("Caio"),
   /** Nome que aparece no cabeçalho de toda arte, ao lado do avatar. */
   displayName: z.string().default("Caio Vilor"),
+  /** Selo azul ao lado do nome (estético). */
+  verified: z.boolean().default(false),
   handle: z.string().default("@caio"),
   colors: z
     .object({

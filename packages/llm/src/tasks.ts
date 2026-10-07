@@ -1,6 +1,6 @@
 import type { BrandRules, ContentPackage, Format, HookType, Idea, Pillar, Platform, Signal } from "@jarvis/core";
 import type { Llm } from "./client.ts";
-import { JudgeOutput, TagOutput, TriageOutput, WriterOutput } from "./outputs.ts";
+import { ImagePick, JudgeOutput, SourceBrief, TagOutput, TriageOutput, WriterOutput } from "./outputs.ts";
 import { FORMAT_SPECS, HOOK_GUIDE, KIND_BY_FORMAT, STYLE_GUIDE, VISUAL_GUIDE } from "./prompts.ts";
 
 export interface BrandContext {
@@ -58,6 +58,8 @@ export interface WriteRequest {
   style?: "hud" | "post" | "quadro";
   /** Direção extra (ex.: teste em massa: "use o cachorro"). */
   brief?: string;
+  /** React: o vídeo de terceiro (descrição, duração, crédito). */
+  reactSource?: { description: string; durationSec: number; credit: string; moments: string };
 }
 
 export async function writePackage(llm: Llm, brand: BrandContext, req: WriteRequest): Promise<WriterOutput> {
@@ -75,7 +77,7 @@ export async function writePackage(llm: Llm, brand: BrandContext, req: WriteRequ
     req.format === "text"
       ? ""
       : req.library
-        ? `BASE DE MÍDIA DO CAIO (use pelo id; prefira as menos usadas; não force mídia onde não combina, mas um pacote com a cara e a vida real do Caio performa melhor):\n${req.library}`
+        ? `BASE DE MÍDIA DO CAIO (use pelo id, só onde combina com a mensagem; a mais acima é a menos usada):\n${req.library}`
         : `Base de mídia vazia: não use visuais com L<id>.`,
     req.brief ? `DIREÇÃO ESPECÍFICA DESTE PACOTE: ${req.brief}` : "",
     `Tipo de gancho pedido: ${req.hookType}${req.exploration ? " (rodada de EXPLORAÇÃO: arrisque um ângulo diferente do usual)" : ""}\n${HOOK_GUIDE}`,
@@ -84,11 +86,15 @@ export async function writePackage(llm: Llm, brand: BrandContext, req: WriteRequ
     req.idea
       ? `Ideia (vinda do radar de tendências):\nTítulo: ${req.idea.title}\nÂngulo: ${req.idea.angle}\nFontes: ${req.idea.sources.map((s) => `${s.title} ${s.url ?? ""} (licença: ${s.license})`).join("; ") || "nenhuma"}`
       : `Sem ideia pré-definida: escolha um tema forte e atemporal do pilar.`,
+    req.reactSource
+      ? `VÍDEO-FONTE (de terceiro, ${Math.round(req.reactSource.durationSec)} s; crédito: ${req.reactSource.credit}):\n${req.reactSource.description}\nMomentos: ${req.reactSource.moments}`
+      : "",
     req.simulationData ? `Dados reais da simulação (cite exatamente estes números):\n${req.simulationData}` : "",
     req.recentTopics.length ? `Temas publicados recentemente (não repita):\n${req.recentTopics.slice(0, 30).map((t) => `- ${t}`).join("\n")}` : "",
     req.previous ? `Versão anterior deste pacote (JSON):\n${JSON.stringify({ slides: req.previous.slides, variants: req.previous.variants.map((v) => ({ platform: v.platform, caption: v.caption })) })}` : "",
     req.feedback ? `AJUSTES OBRIGATÓRIOS nesta versão:\n${req.feedback}` : "",
     `Em "sources", liste apenas fontes reais recebidas acima (license "livre", "permitido" ou "citacao"); use [] se não houver.`,
+    `Antes dos slides, preencha message, takeaway e outline. Depois escreva os slides seguindo o outline. Releia: a sequência conta UMA história clara, do gancho à conclusão? Cada frase é simples e direta?`,
   ];
   return llm.structured({
     role: "writer",
@@ -99,12 +105,21 @@ export async function writePackage(llm: Llm, brand: BrandContext, req: WriteRequ
 }
 
 export async function judgePackage(llm: Llm, brand: BrandContext, pkg: ContentPackage, images: string[] = []): Promise<JudgeOutput> {
+  const FORMAT_LABEL: Record<string, string> = {
+    carousel: "carrossel (imagens)",
+    algoviz: "carrossel com simulação",
+    slideshow: "reel narrado (vídeo com locutor, legenda e trilha)",
+    react: "reel react em tela dividida (vídeo de terceiro em cima, Caio comentando embaixo)",
+    story: "story (1 imagem vertical)",
+    text: "texto",
+  };
   const payload = {
     pillar: pkg.pillar,
-    format: pkg.format,
+    format: FORMAT_LABEL[pkg.format] ?? pkg.format,
+    message: pkg.message,
     hook: pkg.chosenHook,
     style: pkg.style,
-    slides: pkg.slides,
+    slides: pkg.slides.map((sl) => ({ title: sl.title, body: sl.body, visual: sl.visual, ...(sl.narration ? { narration: sl.narration } : {}) })),
     variants: pkg.variants.map((v) => ({ platform: v.platform, kind: v.kind, caption: v.caption, threadParts: v.threadParts })),
     sources: pkg.sources,
   };
@@ -115,16 +130,18 @@ export async function judgePackage(llm: Llm, brand: BrandContext, pkg: ContentPa
     images,
     user: `Tarefa: você é o revisor de qualidade (QA) antes do conteúdo chegar ao celular do Caio. Seja exigente, como um gestor de social media de marca pessoal.
 
-Avalie:
-1. Violação de qualquer regra imutável → blocking = true.
-2. Afirmações factuais sem fonte em "sources" → blocking = true.
-3. Gancho: o primeiro slide/linha prende em 1 segundo? É específico?
-4. Soa como o Caio (bíblia) e não como texto genérico de IA?
-5. Cada legenda é nativa da sua rede? Erros de português?
-6. Entrega valor real (aprende algo, sente algo, quer salvar/compartilhar)?
-7. ${images.length ? "Olhe as imagens renderizadas: texto legível, nada cortado ou sobreposto, hierarquia clara, cara de marca pessoal (não de template genérico)? Problema visual grave → blocking." : "Os visuais escolhidos são variados e fazem sentido?"}
+Primeiro, leia o conteúdo como um seguidor comum leria e escreva em messageUnderstood a mensagem que você entendeu. Depois avalie:
+1. CLAREZA E COESÃO (o critério mais importante): a mensagem é uma só e fica clara? Os slides/cenas seguem uma ordem lógica, cada um levando ao próximo? As frases são simples e diretas? Há frase enigmática, poética, solta ou confusa? Se a mensagem não ficou clara ou há saltos de lógica, clarity ≤ 5 e score ≤ 5.
+2. Violação de qualquer regra imutável (inclui falar do JARVIS/do sistema que faz os posts, ou tutorial de código) → blocking = true.
+3. Afirmações factuais sem fonte em "sources" → blocking = true (enredo pop conhecido e conceito técnico consolidado não precisam).
+4. Gancho: promessa clara e interessante logo no primeiro slide/cena?
+5. Interessante: a pessoa aprende algo, se surpreende ou quer salvar/compartilhar?
+6. Soa como o Caio, natural, sem cara de texto de IA? Erros de português? Rótulos como "(exemplo ilustrativo)" são defeito.
+7. Se cita algo visual (personagem, objeto), há imagem do assunto?
+8. Reels: a narração, lida em sequência, forma um texto coeso e natural?
+9. ${images.length ? "Olhe as imagens renderizadas: texto legível, nada cortado ou sobreposto, hierarquia clara, cara de marca pessoal (não de template genérico)? Problema visual grave → blocking." : "Os visuais escolhidos são variados e fazem sentido?"}
 
-Contexto das artes: as fotos e vídeos da base foram enviados pelo próprio Caio para uso no perfil (detalhes pessoais visíveis nelas não são problema). O nome e o avatar no cabeçalho são a foto real do Caio e vêm da configuração da marca (não avalie como problema); a ausência do @ também é configuração pendente.
+Contexto das artes: as fotos e vídeos da base foram enviados pelo próprio Caio para uso no perfil. O nome, o @, o selo e o avatar no cabeçalho vêm da configuração da marca (não avalie). Imagens de terceiros têm licença livre e crédito automático.
 
 score: 0–10. Abaixo de ${brand.rules.minBrandScore} não passa. Em fixInstructions, diga objetivamente o que mudar.
 
@@ -177,4 +194,28 @@ Mídias:
 ${lines.join("\n")}`,
   });
   return out.items;
+}
+
+/** React: entende o vídeo de terceiro olhando quadros espalhados. */
+export async function describeSource(llm: Llm, brand: BrandContext, frames: { file: string; atSec: number }[], context: string): Promise<SourceBrief> {
+  return llm.structured({
+    role: "triage",
+    stableSystem: brand.system,
+    schema: SourceBrief,
+    images: frames.map((f) => f.file),
+    user: `Tarefa: descrever um vídeo de terceiro que o Caio vai comentar em tela dividida. As imagens são quadros do vídeo, nestes segundos: ${frames.map((f, i) => `[${i + 1}] ${f.atSec.toFixed(1)} s`).join(", ")}.
+Contexto do arquivo: ${context}
+Descreva objetivamente o que acontece e marque os momentos mais interessantes (com o segundo).`,
+  });
+}
+
+/** Imagem do assunto: escolhe, entre candidatas de banco livre, a que melhor mostra o tema. */
+export async function pickImage(llm: Llm, brand: BrandContext, subject: string, candidates: string[]): Promise<ImagePick> {
+  return llm.structured({
+    role: "triage",
+    stableSystem: brand.system,
+    schema: ImagePick,
+    images: candidates,
+    user: `Tarefa: escolher a imagem que melhor representa "${subject}" num post de Instagram. Prefira: o assunto nítido e reconhecível, boa qualidade, sem texto grande por cima, sem marca d'água, sem conteúdo constrangedor. Responda 0 se nenhuma serve.`,
+  });
 }

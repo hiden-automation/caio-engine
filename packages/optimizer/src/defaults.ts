@@ -1,14 +1,15 @@
 import type { Format, Strategy } from "@jarvis/core";
 
 /** Formatos que já têm fábrica implementada. O resto entra com peso 0 até existir. */
-export const IMPLEMENTED_FORMATS: readonly Format[] = ["carousel", "algoviz", "slideshow", "text", "story"];
+export const IMPLEMENTED_FORMATS: readonly Format[] = ["carousel", "algoviz", "slideshow", "react", "text", "story"];
 
 export function defaultStrategy(now = new Date()): Strategy {
   return {
     version: 1,
     updatedAt: now.toISOString(),
-    pillarMix: { computacao: 40, geek: 25, bastidores: 10, jarvis: 10, liberdade: 15 },
-    pillarFloors: { computacao: 25, geek: 10, bastidores: 5, jarvis: 5, liberdade: 5 },
+    // "jarvis" (o sistema por dentro) saiu da pauta: o Caio não quer falar disso.
+    pillarMix: { computacao: 45, geek: 27, bastidores: 13, jarvis: 0, liberdade: 15 },
+    pillarFloors: { computacao: 25, geek: 10, bastidores: 5, jarvis: 0, liberdade: 5 },
     maxWeeklyShiftPts: 10,
     exploration: 0.2,
     packagesPerDay: 6,
@@ -20,7 +21,7 @@ export function defaultStrategy(now = new Date()): Strategy {
       demo: 0,
       voice_reel: 0,
       slideshow: 25,
-      react: 0,
+      react: 15,
       cut: 0,
       longform: 0,
       take: 0,

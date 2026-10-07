@@ -6,6 +6,28 @@ import { PILLAR_LABEL, PLATFORM_LABEL, type Feed, type PackageSummary } from "./
 
 type Tab = "fila" | "agenda" | "base" | "ideias" | "painel";
 
+const DECIDED_KEY = "jarvis.decided";
+const DECIDED_TTL = 30 * 60_000;
+
+function loadDecided(): Set<string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(DECIDED_KEY) ?? "{}") as Record<string, number>;
+    return new Set(Object.entries(raw).filter(([, at]) => Date.now() - at < DECIDED_TTL).map(([id]) => id));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveDecided(ids: Set<string>): void {
+  try {
+    const raw = JSON.parse(localStorage.getItem(DECIDED_KEY) ?? "{}") as Record<string, number>;
+    const next = Object.fromEntries([...ids].map((id) => [id, raw[id] ?? Date.now()]));
+    localStorage.setItem(DECIDED_KEY, JSON.stringify(next));
+  } catch {
+    /* sem armazenamento: só perde a memória entre aberturas */
+  }
+}
+
 function Setup({ onDone }: { onDone: (c: Conn) => void }) {
   const [repo, setRepo] = useState("");
   const [token, setToken] = useState("");
@@ -185,7 +207,14 @@ export function App() {
   const [feed, setFeed] = useState<Feed | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [decided, setDecided] = useState<Set<string>>(new Set());
+  // Decisões enviadas há pouco: o card some na hora, mesmo antes do motor processar.
+  const [decided, setDecidedRaw] = useState<Set<string>>(() => loadDecided());
+  const setDecided = (fn: Set<string> | ((s: Set<string>) => Set<string>)) =>
+    setDecidedRaw((prev) => {
+      const next = typeof fn === "function" ? fn(prev) : fn;
+      saveDecided(next);
+      return next;
+    });
   const [msg, setMsg] = useState("");
 
   const toast = useCallback((m: string) => {
@@ -198,7 +227,6 @@ export function App() {
     setLoading(true);
     try {
       setFeed(await getJson<Feed>(conn, "pwa/feed.json"));
-      setDecided(new Set());
       setError("");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falhou");
@@ -211,12 +239,24 @@ export function App() {
     void refresh();
     const onVis = () => document.visibilityState === "visible" && void refresh();
     document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
+    // Com o app aberto, atualiza a cada 2 min (produção nova, decisões aplicadas).
+    const timer = setInterval(() => document.visibilityState === "visible" && void refresh(), 120_000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      clearInterval(timer);
+    };
   }, [refresh]);
 
   if (!conn) return <Setup onDone={setConn} />;
 
   async function decide(d: Decision) {
+    // A lista pode estar velha (app aberto há horas): confere antes de gravar a decisão.
+    const fresh = await getJson<Feed>(conn!, "pwa/feed.json");
+    if (!fresh.pending.some((p) => p.id === d.packageId)) {
+      setFeed(fresh);
+      toast("Esse pacote não está mais na fila (expirou ou foi substituído). Atualizei a lista.");
+      return;
+    }
     const at = new Date().toISOString();
     await createJson(conn!, `reviews/${d.packageId}-${Date.now()}.json`, { ...d, at }, `review: ${d.decision} ${d.packageId}`);
     setDecided((s) => new Set(s).add(d.packageId));

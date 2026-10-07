@@ -23,6 +23,7 @@ jobs:
       DATA_DIR: data
       PREVIEWS_DIR: previews
       CDN_DIR: cdn-out
+      JARVIS_PLATFORMS: ${{ vars.JARVIS_PLATFORMS }}
       JARVIS_DRY_RUN: ${{ inputs.dry_run || '0' }}
       CDN_BASE_URL: ${{ vars.CDN_BASE_URL }}
       CDN_PUSH_URL: https://x-access-token:${{ secrets.DATA_TOKEN }}@github.com/${{ vars.CDN_REPO }}.git

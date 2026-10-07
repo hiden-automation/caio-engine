@@ -102,6 +102,11 @@ export const Slide = z.object({
   code: z.string().optional(),
   /** Reels: segundos em tela desta cena (o render ajusta pelo tamanho do texto se faltar). */
   durationSec: z.number().optional(),
+  /** Reels: o que o locutor fala nesta cena. */
+  narration: z.string().optional(),
+  /** Imagem do assunto (banco com licença livre), resolvida no render. */
+  imageQuery: z.string().optional(),
+  image: z.object({ path: z.string(), credit: z.string() }).optional(),
 });
 export type Slide = z.infer<typeof Slide>;
 
@@ -166,7 +171,7 @@ export const Features = z.object({
   format: Format,
   hookType: HookType,
   firstFrame: z.enum(["rosto", "texto", "simulacao", "tela"]).default("texto"),
-  voice: z.enum(["clone", "real", "nenhuma"]).default("nenhuma"),
+  voice: z.enum(["clone", "real", "locutor", "nenhuma"]).default("nenhuma"),
   trendLinked: z.boolean().default(false),
   modeledFormat: z.string().optional(),
   series: z.string().optional(),
@@ -202,6 +207,10 @@ export const ContentPackage = z.object({
   features: Features,
   /** Estilo visual: hud (escuro, assinatura), post (print de post), quadro (explicação desenhada). */
   style: z.enum(["hud", "post", "quadro"]).default("hud"),
+  /** A mensagem do post em uma frase (o roteirista define antes de escrever). */
+  message: z.string().optional(),
+  /** React: vídeo de terceiro usado (com crédito). */
+  reactSource: z.object({ path: z.string(), credit: z.string(), url: z.string().optional(), durationSec: z.number() }).optional(),
   /** Itens da base (L1, L2…) usados nas artes: controla o desgaste. */
   libraryRefs: z.array(z.string()).default([]),
   /** Parâmetros da simulação (AlgoViz), para re-renderizar idêntico. */
@@ -252,6 +261,8 @@ export const Idea = z.object({
   status: z.enum(["new", "used", "discarded"]).default("new"),
   expiresAt: z.string().optional(),
   signalIds: z.array(z.string()).default([]),
+  /** Vídeo de referência que o Caio mandou pelo PWA (branch library), para react. */
+  refVideo: z.object({ path: z.string(), credit: z.string(), url: z.string().optional() }).optional(),
   sources: z.array(Source).default([]),
 });
 export type Idea = z.infer<typeof Idea>;

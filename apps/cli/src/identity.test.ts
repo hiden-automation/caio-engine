@@ -76,3 +76,12 @@ describe("trilha própria", () => {
     expect(peak).toBeLessThanOrEqual(0.71);
   });
 });
+
+describe("narração", () => {
+  it("o locutor fala siglas e nomes do jeito certo sem mudar o texto da tela", async () => {
+    const { spoken } = await import("@jarvis/media");
+    expect(spoken("O ChatGPT inventa")).toBe("O Chat G P T inventa");
+    expect(spoken("chat ggt")).toBe("Chat G P T");
+    expect(spoken("A IA de um CEO")).toBe("A I A de um C E O");
+  });
+});

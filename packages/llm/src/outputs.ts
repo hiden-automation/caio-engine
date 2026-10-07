@@ -27,19 +27,24 @@ export type TriageOutput = z.infer<typeof TriageOutput>;
 export const SlideOut = z.object({
   title: z.string(),
   body: z.string(),
-  visual: z.string().describe("um dos visuais da lista (ex.: capa:L3, texto, chat, foto:L5, cta)"),
-  code: z.string().describe('código/terminal quando visual="codigo" ou "terminal"; senão ""'),
-  durationSec: z.number().describe("só reels: segundos da cena; 0 = automático"),
+  visual: z.string().describe("um dos visuais da lista (ex.: capa:L3, texto, prompt, imagem, foto:L5, cta)"),
+  imageQuery: z.string().describe('busca em inglês da imagem do assunto quando visual="imagem" ou "capa:img"; senão ""'),
+  narration: z.string().describe('reels: o que o locutor fala nesta cena; carrossel/story: ""'),
+  code: z.string().describe('sempre ""'),
+  durationSec: z.number().describe("sempre 0 (automático)"),
 });
 
 export const WriterOutput = z.object({
   topic: z.string(),
   angle: z.string(),
+  message: z.string().describe("A mensagem do post em UMA frase simples, que um leigo entende"),
+  takeaway: z.string().describe("o que a pessoa sabe ou consegue fazer depois de ver o post"),
+  outline: z.array(z.string()).describe("o roteiro: uma linha por slide/cena, em ordem lógica, cada uma levando à próxima"),
   hookType: HookType,
   hooks: z.array(z.string()).describe("3 ganchos alternativos para A/B"),
   chosenHook: z.string(),
   firstFrame: z.enum(["rosto", "texto", "simulacao", "tela"]),
-  series: z.string().describe('nome curto da série recorrente (ex.: "LLM por dentro", "Geek × Negócios", "Evolução ao vivo", "Diário do JARVIS"), ou ""'),
+  series: z.string().describe('nome curto da série recorrente (ex.: "IA por dentro", "Geek × Negócios", "Evolução ao vivo", "Automação sem código"), ou ""'),
   style: z.enum(["hud", "post", "quadro"]),
   slides: z.array(SlideOut),
   variants: z.array(
@@ -55,6 +60,8 @@ export const WriterOutput = z.object({
 export type WriterOutput = z.infer<typeof WriterOutput>;
 
 export const JudgeOutput = z.object({
+  messageUnderstood: z.string().describe("a mensagem que VOCÊ entendeu lendo só o conteúdo, em 1 frase (\"não ficou clara\" se for o caso)"),
+  clarity: z.number().describe("0 a 10: um leigo entende de primeira, a sequência é lógica e coesa?"),
   score: z.number().describe("0 a 10: qualidade e aderência à marca"),
   blocking: z.boolean().describe("true se há problema que impede publicar"),
   issues: z.array(z.string()),
@@ -66,3 +73,15 @@ export const TagOutput = z.object({
   items: z.array(LibraryTags.extend({ id: z.string() })),
 });
 export type TagOutput = z.infer<typeof TagOutput>;
+
+export const SourceBrief = z.object({
+  description: z.string().describe("o que acontece no vídeo, em 2–4 frases objetivas"),
+  moments: z.array(z.object({ atSec: z.number(), what: z.string() })).describe("momentos marcantes (pelos quadros)"),
+});
+export type SourceBrief = z.infer<typeof SourceBrief>;
+
+export const ImagePick = z.object({
+  index: z.number().describe("número da imagem que melhor mostra o assunto (1..N), ou 0 se nenhuma serve"),
+  why: z.string(),
+});
+export type ImagePick = z.infer<typeof ImagePick>;

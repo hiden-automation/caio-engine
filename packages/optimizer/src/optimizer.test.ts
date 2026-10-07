@@ -87,7 +87,9 @@ describe("optimizeStrategy", () => {
     for (const p of PILLARS) expect(r.strategy.pillarMix[p]).toBeGreaterThanOrEqual(s0.pillarFloors[p] - 0.01);
     expect(r.proposals.some((p) => p.dimension === "pillar" && p.key === "geek")).toBe(true);
     // Formato ainda não implementado continua com peso 0.
-    expect(r.strategy.formatWeights.react).toBe(0);
+    expect(r.strategy.formatWeights.voice_reel).toBe(0);
+    // Pilar desligado pelo Caio (peso 0) não volta sozinho.
+    expect(r.strategy.pillarMix.jarvis).toBe(0);
   });
 });
 

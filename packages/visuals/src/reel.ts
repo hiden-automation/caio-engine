@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { Slide } from "@jarvis/core";
 import type { GaRun } from "@jarvis/sims";
 import { routeSvg } from "./sim-svg.ts";
-import { CANVAS, css, fontLinks, simColors, slideHtml, type Look } from "./templates.ts";
+import { CANVAS, css, fontLinks, PILLAR_ACCENT, simColors, slideHtml, type Look } from "./templates.ts";
 import type { Renderer } from "./render.ts";
 import type { VisualTokens } from "./tokens.ts";
 
@@ -12,7 +12,7 @@ export const REEL_FPS = 30;
 
 /** Tempo de cena pelo tamanho do texto: dá para ler sem pausar o vídeo. */
 export function sceneDuration(s: Slide, index: number): number {
-  if (s.durationSec) return Math.max(1.5, Math.min(8, s.durationSec));
+  if (s.durationSec) return Math.max(1.5, Math.min(20, s.durationSec));
   const words = `${s.title} ${s.body}`.split(/\s+/).filter(Boolean).length;
   const d = 1.4 + words * 0.3;
   return index === 0 ? Math.min(2.6, Math.max(1.8, d)) : Math.min(6.5, Math.max(2.2, d));
@@ -51,7 +51,7 @@ const ANIMATE = `
 const clamp=(x)=>Math.max(0,Math.min(1,x));
 const ease=(x)=>1-Math.pow(1-x,3);
 const scenes=[...document.querySelectorAll('section.slide')].map((el,i)=>{
-  const anim=[...el.querySelectorAll('.content > *:not(.bleed):not(.cover-person), .cover-text > *, .bleed-text > *, .list li, .check li, .node, .arrow, .msg, .crow, .col, .bubble, .talker, .cutout')];
+  const anim=[...el.querySelectorAll('.content > *:not(.bleed):not(.cover-person):not(.split):not(.credit), .cover-text > *, .bleed-text, .list li, .check li, .node, .arrow, .msg, .crow, .col, .bubble, .talker, .cutout, .re-card, .re-cut')];
   const big=el.querySelector('.big');
   const target=big?parseFloat(big.textContent.replace(/[^0-9.,]/g,'').replace(',','.')):NaN;
   return {el,start:T.starts[i],end:T.ends[i],anim,kb:el.querySelector('.ph'),frames:el.querySelector('[data-frames]'),sim:el.querySelector('[data-sim]'),big,target,bigText:big?big.innerHTML:''};
@@ -74,6 +74,18 @@ window.__seek=async(t)=>{
     if(s.big&&isFinite(s.target)&&s.target>0){const p=ease(clamp((local-0.1)/0.9));const v=s.target*p;const dec=(s.bigText.match(/[.,](\\d+)/)||[,''])[1].length;s.big.innerHTML=s.bigText.replace(/[0-9][0-9.,]*/, v.toLocaleString('pt-BR',{minimumFractionDigits:dec,maximumFractionDigits:dec}));}
   }
   const bar=document.getElementById('reel-prog');bar.style.width=(clamp(t/T.total)*100).toFixed(2)+'%';
+  // Legenda sincronizada: blocos de até 4 palavras, a palavra falada em destaque.
+  const cap=document.getElementById('cap');let shown=false;
+  for(const [i,s] of scenes.entries()){
+    const W=CAP[i];if(!W||!W.length)continue;const local=t-s.start;
+    if(local<W[0].t-0.05||local>W[W.length-1].t+W[W.length-1].d+0.35)continue;
+    let k=0;for(let j=0;j<W.length;j++){if(W[j].t<=local)k=j;}
+    const a=Math.floor(k/4)*4;const chunk=W.slice(a,a+4);
+    const html=chunk.map((w,j)=>a+j===k?'<b>'+w.w+'</b>':w.w).join(' ');
+    if(cap.dataset.h!==html){cap.dataset.h=html;cap.innerHTML=html;}
+    cap.className=s.el.classList.contains('react')?'on react':'on';shown=true;break;
+  }
+  if(!shown)cap.className='';
   await Promise.all(waits);
 };`;
 
@@ -85,6 +97,8 @@ export interface ReelOptions {
   sim?: GaRun;
   /** Trilha (WAV) já gerada; o vídeo sai com o tamanho do áudio ou das cenas, o menor. */
   audio?: string;
+  /** Palavras narradas por cena (tempo relativo ao início da cena), para a legenda. */
+  captions?: Record<number, { t: number; d: number; w: string }[]>;
   encode: (framesPattern: string, fps: number, audio: string | undefined, dst: string) => Promise<void>;
 }
 
@@ -126,8 +140,12 @@ export async function renderReel(renderer: Renderer, scenes: Slide[], opts: Reel
   section.slide{position:absolute;inset:0}
   .ph{will-change:transform}
   #reel-prog{position:absolute;top:0;left:0;height:8px;background:${"var(--accent, #3DDC97)"};z-index:20}
-  </style></head><body>${sections}<div id="reel-prog"></div>
-  <script>const T=${JSON.stringify(timing)};const SIM=${JSON.stringify(sims)};${ANIMATE}</script></body></html>`;
+  #cap{position:absolute;left:70px;right:70px;top:1440px;z-index:30;text-align:center;font-family:'${opts.tokens.fonts.display}',sans-serif;font-weight:700;font-size:58px;line-height:1.2;color:#fff;opacity:0;
+    text-shadow:0 4px 0 #000,0 0 18px #000c;-webkit-text-stroke:2px #000;paint-order:stroke fill}
+  #cap.on{opacity:1}#cap.react{top:880px}
+  #cap b{color:${PILLAR_ACCENT[opts.look.pillar].dark}}
+  </style></head><body>${sections}<div id="reel-prog"></div><div id="cap"></div>
+  <script>const T=${JSON.stringify(timing)};const SIM=${JSON.stringify(sims)};const CAP=${JSON.stringify(opts.captions ?? {})};${ANIMATE}</script></body></html>`;
 
   await mkdir(opts.outDir, { recursive: true });
   const framesDir = await mkdtemp(join(tmpdir(), "jarvis-reel-"));

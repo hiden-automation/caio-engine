@@ -18,6 +18,9 @@ import { optimize } from "./optimize.ts";
 const WRITER: WriterOutput = {
   topic: "Algoritmo genético nos bairros de SP",
   angle: "evolução resolvendo rota",
+  message: "a evolução acha rotas boas",
+  takeaway: "entender algoritmo genético",
+  outline: ["gancho", "simulação", "cta"],
   hookType: "eu_fiz",
   hooks: ["a", "b", "c"],
   chosenHook: "Deixei a evolução achar a rota",
@@ -25,9 +28,9 @@ const WRITER: WriterOutput = {
   series: "Evolução ao vivo",
   style: "hud",
   slides: [
-    { title: "Deixei a **evolução** achar a rota", body: "", visual: "capa", code: "", durationSec: 0 },
-    { title: "Geração 0", body: "caos", visual: "sim:0", code: "", durationSec: 0 },
-    { title: "Salva aí", body: "segue pra mais", visual: "cta", code: "", durationSec: 0 },
+    { title: "Deixei a **evolução** achar a rota", body: "", visual: "capa", code: "", durationSec: 0, imageQuery: "", narration: "" },
+    { title: "Geração 0", body: "caos", visual: "sim:0", code: "", durationSec: 0, imageQuery: "", narration: "" },
+    { title: "Salva aí", body: "segue pra mais", visual: "cta", code: "", durationSec: 0, imageQuery: "", narration: "" },
   ],
   variants: [
     { platform: "instagram", kind: "carousel", caption: "Legenda IG #ia", threadParts: [] },
@@ -46,7 +49,7 @@ function fakeAnthropic(judgeScores: number[]): Anthropic {
         parse: async (params: { messages: { content: string }[] }) => {
           const user = JSON.stringify(params.messages[0]!.content);
           const parsed = user.includes("revisor de qualidade")
-            ? { score: judgeScores.shift() ?? 9, blocking: false, issues: [], fixInstructions: "" }
+            ? { messageUnderstood: "ok", clarity: 9, score: judgeScores.shift() ?? 9, blocking: false, issues: [], fixInstructions: "" }
             : WRITER;
           return {
             model: "claude-opus-5-5",
@@ -192,7 +195,8 @@ describe("gc", () => {
 describe("produção só com Instagram", () => {
   it("não sorteia formato que nenhuma rede ligada aceita", { timeout: 120_000 }, async () => {
     const ctx = { ...(await makeCtx(new Date("2026-10-06T12:00:00Z"), [])), platforms: ["instagram"] as Platform[] };
-    await produce(ctx, { count: 8 });
+    // Reel narrado e react dependem de rede (voz, vídeo-fonte): ficam de fora do teste.
+    await produce(ctx, { count: 8, formats: ["carousel", "algoviz", "story", "text"] });
     const pkgs = await ctx.store.listPackages();
     expect(pkgs.length).toBe(8);
     for (const p of pkgs) {

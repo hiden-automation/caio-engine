@@ -39,3 +39,20 @@ export async function encodeReel(framesPattern: string, fps: number, audio: stri
   args.push(dst);
   await run(FFMPEG, args);
 }
+
+/** Vídeo de terceiro → MP4 normalizado (largura ≤ 1080, 30 fps), só o começo (até maxSec). */
+export async function prepareSource(src: string, dst: string, maxSec = 180): Promise<void> {
+  await run(FFMPEG, ["-v", "error", "-y", "-i", src, "-t", String(maxSec), "-vf", "scale='min(1080,iw)':-2,fps=30", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-ac", "2", dst]);
+}
+
+/** Um quadro em cada instante pedido (para a IA entender o vídeo). */
+export async function framesAt(src: string, outDir: string, times: number[]): Promise<string[]> {
+  await mkdir(outDir, { recursive: true });
+  const out: string[] = [];
+  for (const [i, t] of times.entries()) {
+    const file = join(outDir, `q-${i + 1}.jpg`);
+    await run(FFMPEG, ["-v", "error", "-y", "-ss", t.toFixed(2), "-i", src, "-frames:v", "1", "-vf", "scale=640:-2", "-q:v", "3", file]);
+    out.push(file);
+  }
+  return out;
+}

@@ -21,12 +21,13 @@ import {
   type VariantKind,
 } from "@jarvis/core";
 import { judgePackage, KIND_BY_FORMAT, RefusedError, writePackage, type WriterOutput } from "@jarvis/llm";
-import { clipFrames, encodeReel, writeTrack } from "@jarvis/media";
+import { clipFrames, encodeReel, framesAt, mixAudio, narrate, writeTrack, type AudioCue } from "@jarvis/media";
 import { allocateDay, IMPLEMENTED_FORMATS, type Slot } from "@jarvis/optimizer";
 import { runGeneticTsp, SP_BAIRROS, type GaRun } from "@jarvis/sims";
-import { reelTiming, renderReel, Renderer, type Look, type MediaRef, type Style } from "@jarvis/visuals";
+import { reelTiming, renderReel, Renderer, sceneDuration, type Look, type MediaRef, type Style } from "@jarvis/visuals";
 import type { Ctx } from "./context.ts";
 import { libraryCatalog, usable } from "./library.ts";
+import { prepareReact, resolveImages, type ReactSourceReady } from "./steps.ts";
 
 const MAX_QA_ATTEMPTS = 2;
 const DEFAULT_TTL_H = 7 * 24;
@@ -37,6 +38,8 @@ export interface ProduceSlot extends Slot {
   brief?: string;
   /** Reel com simulação real (algoritmo genético) animada. */
   sim?: boolean;
+  /** React: o que buscar de vídeo de terceiro (licença livre). */
+  sourceQuery?: string;
 }
 
 function platformsFor(slot: Pick<Slot, "pillar" | "format">, allowed: Platform[], pillarPlatforms: Record<string, Platform[]>): Platform[] {
@@ -130,20 +133,79 @@ interface Rendered {
   review: string[];
 }
 
-async function render(ctx: Ctx, env: Env, pkg: ContentPackage, sim?: GaRun): Promise<Rendered> {
+const clipRange = (visual = ""): [number, number] | undefined => {
+  const m = visual.match(/^react:clip:(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)/);
+  return m ? [Number(m[1]), Number(m[2])] : undefined;
+};
+
+/** Foto do Caio para a metade de baixo do react: recorte, a menos usada. */
+function reactPhoto(env: Env): string | undefined {
+  const pool = env.library.filter((i) => usable(i) && i.kind === "image" && i.tags!.people === "caio");
+  pool.sort((a, b) => Number(!!b.derived.cutout) - Number(!!a.derived.cutout) || (env.recentUses.get(a.id) ?? 0) - (env.recentUses.get(b.id) ?? 0));
+  return pool[0]?.id;
+}
+
+async function render(ctx: Ctx, env: Env, pkg: ContentPackage, sim?: GaRun, react?: ReactSourceReady): Promise<Rendered> {
   if (pkg.format === "text" || !pkg.slides.length) return { pkg: { ...pkg, assets: [] }, review: [] };
   const relDir = `${pkg.createdAt.slice(0, 7)}/${pkg.id}`;
   const outDir = join(ctx.store.previewsDir, relDir);
   const tokens = await ctx.tokens();
   const look = lookFor(ctx, env, pkg);
   const assetPath = (file: string) => `${relDir}/${file.split(/[\\/]/).pop()}`;
+  // Imagens do assunto ficam na pasta do pacote; o navegador do render lê por file://.
+  const forRender = (slides: ContentPackage["slides"]) =>
+    slides.map((sl) => (sl.image ? { ...sl, image: { ...sl.image, path: fileUrl(join(ctx.store.previewsDir, sl.image.path)) } } : sl));
 
-  if (pkg.format === "slideshow") {
-    const timing = reelTiming(pkg.slides);
-    const work = await mkdtemp(join(tmpdir(), "jarvis-broll-"));
+  if (pkg.format === "slideshow" || pkg.format === "react") {
+    const work = await mkdtemp(join(tmpdir(), "jarvis-reel-"));
     try {
+      // Narração do locutor: o tempo de cada cena vem da fala.
+      const narr = await narrate(pkg.slides.map((sl) => (clipRange(sl.visual) ? "" : (sl.narration ?? ""))), work);
+      const lead = 0.15;
+      const timed = pkg.slides.map((sl, i) => {
+        const range = clipRange(sl.visual);
+        if (range && react) return { ...sl, durationSec: Math.max(4, Math.min(15, range[1] - range[0], react.durationSec - range[0])) };
+        const n = narr[i];
+        return { ...sl, durationSec: n ? Math.max(1.8, n.durationSec + lead + 0.35) : sceneDuration(sl, i) };
+      });
+      pkg = { ...pkg, slides: timed };
+      const timing = reelTiming(timed);
+
+      // React: trecho do vídeo de terceiro (em cima) + foto do Caio (embaixo).
+      const cues: AudioCue[] = [];
+      if (pkg.format === "react" && react) {
+        const firstClip = timed.find((sl) => clipRange(sl.visual));
+        const startAt = clipRange(firstClip?.visual)?.[0] ?? 0;
+        const [still] = await framesAt(react.file, join(work, "still"), [Math.min(startAt + 0.5, react.durationSec - 0.2)]);
+        const caioId = reactPhoto(env);
+        const caioItem = env.library.find((x) => x.id === caioId);
+        look.react = {
+          still: fileUrl(still!),
+          credit: react.credit,
+          clipFrames: {},
+          ...(caioItem
+            ? {
+                caio: {
+                  photo: fileUrl(join(ctx.libraryDir, caioItem.derived.full)),
+                  cutout: caioItem.derived.cutout ? fileUrl(join(ctx.libraryDir, caioItem.derived.cutout)) : undefined,
+                  focus: caioItem.tags?.focus ?? { x: 0.5, y: 0.4 },
+                },
+              }
+            : {}),
+        };
+        if (caioId && !pkg.libraryRefs.includes(caioId)) pkg = { ...pkg, libraryRefs: [...pkg.libraryRefs, caioId] };
+        for (const [i, sl] of timed.entries()) {
+          const range = clipRange(sl.visual);
+          if (!range) continue;
+          const dur = timing.ends[i]! - timing.starts[i]!;
+          const frames = await clipFrames(react.file, join(work, `clip-${i}`), range[0], dur + 0.2);
+          look.react.clipFrames[i] = frames.map(fileUrl);
+          cues.push({ file: react.file, at: timing.starts[i]!, from: range[0], duration: dur, volume: 1 });
+        }
+      }
+
       // B-roll: quadros do clipe da base, do tamanho da cena que o usa.
-      for (const [i, s] of pkg.slides.entries()) {
+      for (const [i, s] of timed.entries()) {
         const [kind, id] = (s.visual ?? "").split(":");
         const it = env.library.find((x) => x.id === id);
         if (kind !== "video" || !it?.derived.clip || !look.media[id!]) continue;
@@ -152,22 +214,34 @@ async function render(ctx: Ctx, env: Env, pkg: ContentPackage, sim?: GaRun): Pro
         const frames = await clipFrames(join(ctx.libraryDir, it.derived.clip), join(work, `${i}`), start, dur);
         look.media[id!] = { ...look.media[id!]!, frames: frames.map(fileUrl) };
       }
-      const audio = join(work, "trilha.wav");
-      await writeTrack(audio, { seed: seedOf(pkg.id), seconds: timing.total + 0.5, energy: pkg.hookType === "choque" || sim ? "energia" : seedOf(pkg.id) % 2 ? "energia" : "calma" });
-      const reel = await renderReel(env.renderer, pkg.slides, { tokens, look, outDir, prefix: "reel", sim, audio, encode: encodeReel });
+      const music = join(work, "trilha.wav");
+      await writeTrack(music, { seed: seedOf(pkg.id), seconds: timing.total + 0.5, energy: pkg.hookType === "choque" || sim ? "energia" : seedOf(pkg.id) % 2 ? "energia" : "calma" });
+      const captions: Record<number, { t: number; d: number; w: string }[]> = {};
+      for (const [i, n] of narr.entries()) {
+        if (!n) continue;
+        cues.push({ file: n.file, at: timing.starts[i]! + lead });
+        captions[i] = n.words.map((w) => ({ ...w, t: w.t + lead }));
+      }
+      const audio = join(work, "mix.wav");
+      await mixAudio(cues, music, timing.total, audio);
+      const reel = await renderReel(env.renderer, forRender(timed), { tokens, look, outDir, prefix: "reel", sim, audio, captions, encode: encodeReel });
       const assets: Asset[] = [
         { id: "video", kind: "video", path: assetPath(reel.video), role: "reel", order: 0, width: 1080, height: 1920, durationSec: reel.durationSec },
         { id: "img-1", kind: "image", path: assetPath(reel.cover), role: "cover", order: 1, width: 1080, height: 1920 },
       ];
-      const variants = pkg.variants.map((v) => ({ ...v, assetIds: ["video", "img-1"] }));
-      return { pkg: { ...pkg, assets, variants, features: { ...pkg.features, durationSec: reel.durationSec } }, review: [reel.cover, ...reel.stills] };
+      const voiced = narr.some(Boolean);
+      const variants = pkg.variants.map((v) => ({ ...v, assetIds: ["video", "img-1"], aiLabel: voiced }));
+      return {
+        pkg: { ...pkg, assets, variants, features: { ...pkg.features, durationSec: reel.durationSec, voice: voiced ? "locutor" : "nenhuma" } },
+        review: [reel.cover, ...reel.stills],
+      };
     } finally {
       await rm(work, { recursive: true, force: true });
     }
   }
 
   const story = pkg.format === "story";
-  const result = await env.renderer.render(story ? pkg.slides.slice(0, 1) : pkg.slides, {
+  const result = await env.renderer.render(forRender(story ? pkg.slides.slice(0, 1) : pkg.slides), {
     canvas: story ? "story" : "carousel",
     tokens,
     look,
@@ -203,7 +277,15 @@ function applyDraft(pkg: ContentPackage, draft: WriterOutput, platforms: Platfor
     let visual = s.visual;
     const id = visual.split(":")[1];
     if (id && /^L\d+$/.test(id) && !ok.has(id)) visual = visual.startsWith("capa") ? "capa" : "texto";
-    return { title: s.title, body: s.body, visual, ...(s.code ? { code: s.code } : {}), ...(s.durationSec > 0 ? { durationSec: s.durationSec } : {}) };
+    // React: toda cena usa a tela dividida.
+    if (pkg.format === "react" && !visual.startsWith("react")) visual = visual === "cta" ? "react:cta" : "react:comentario";
+    return {
+      title: s.title,
+      body: s.body,
+      visual,
+      ...(s.narration.trim() ? { narration: s.narration.trim() } : {}),
+      ...(s.imageQuery.trim() ? { imageQuery: s.imageQuery.trim() } : {}),
+    };
   });
   const next: ContentPackage = {
     ...pkg,
@@ -212,6 +294,7 @@ function applyDraft(pkg: ContentPackage, draft: WriterOutput, platforms: Platfor
     hookType: draft.hookType,
     hooks: draft.hooks,
     chosenHook: draft.chosenHook,
+    message: draft.message,
     style: forcedStyle ?? draft.style,
     slides,
     variants: normalizeVariants(draft, pkg.format, platforms),
@@ -288,86 +371,101 @@ async function build(ctx: Ctx, env: Env, input: BuildInput, recentTopics: string
         },
       };
 
-  let feedback = input.feedback;
-  for (let attempt = 0; ; attempt++) {
-    const draft = await writePackage(llm, brand, {
-      pillar: slot.pillar,
-      format: slot.format,
-      hookType: slot.hookType,
-      exploration: slot.exploration,
-      platforms,
-      idea,
-      recentTopics,
-      simulationData: simRun ? simulationSummary(simRun) : undefined,
-      feedback,
-      previous: input.existing ?? (attempt > 0 ? pkg : undefined),
-      library: libraryCatalog(env.library, env.recentUses),
-      style: slot.style,
-      brief: slot.brief,
-    });
-    if (pkg.status === "idea") pkg = transition(pkg, "scripted", undefined, now);
-    else if (pkg.status === "rendered") pkg = transition(pkg, "scripted", "reescrita pelo QA", now);
-    pkg = applyDraft(pkg, draft, platforms, env, slot.style);
+  // React: prepara o vídeo de terceiro uma vez (a IA "assiste" antes de comentar).
+  let react: ReactSourceReady | undefined;
+  if (pkg.format === "react") {
+    const prev = input.existing?.reactSource;
+    react = await prepareReact(llm, brand, slot.sourceQuery ?? pkg.topic, prev ? { downloadUrl: prev.path, credit: prev.credit, url: prev.url } : undefined);
+    if (!react) throw new Error("react sem vídeo-fonte disponível");
+    pkg = { ...pkg, reactSource: { path: react.downloadUrl ?? "", credit: react.credit, url: react.url, durationSec: react.durationSec } };
+    if (!pkg.sources.some((x) => x.url === react!.url)) pkg = { ...pkg, sources: [...pkg.sources, { title: `Vídeo: ${react.credit}`, url: react.url, license: "livre", credit: react.credit }] };
+  }
 
-    // Reserva já as mídias escolhidas: os pacotes em paralelo veem o rodízio na hora.
-    for (const r of pkg.libraryRefs) env.recentUses.set(r, (env.recentUses.get(r) ?? 0) + 1);
-    const rendered = await render(ctx, env, pkg, simRun);
-    pkg = transition(rendered.pkg, "rendered", undefined, now);
+  try {
+    let feedback = input.feedback;
+    for (let attempt = 0; ; attempt++) {
+      const draft = await writePackage(llm, brand, {
+        pillar: slot.pillar,
+        format: slot.format,
+        hookType: slot.hookType,
+        exploration: slot.exploration,
+        platforms,
+        idea,
+        recentTopics,
+        simulationData: simRun ? simulationSummary(simRun) : undefined,
+        feedback,
+        previous: input.existing ?? (attempt > 0 ? pkg : undefined),
+        library: libraryCatalog(env.library, env.recentUses),
+        style: slot.style,
+        brief: slot.brief,
+        ...(react ? { reactSource: { description: react.description, durationSec: react.durationSec, credit: react.credit, moments: react.moments } } : {}),
+      });
+      if (pkg.status === "idea") pkg = transition(pkg, "scripted", undefined, now);
+      else if (pkg.status === "rendered") pkg = transition(pkg, "scripted", "reescrita pelo QA", now);
+      pkg = applyDraft(pkg, draft, platforms, env, slot.style);
+      pkg = await resolveImages(llm, brand, pkg, join(ctx.store.previewsDir, pkg.createdAt.slice(0, 7), pkg.id), `${pkg.createdAt.slice(0, 7)}/${pkg.id}`);
 
-    const issues = deterministicIssues(pkg, brand.rules);
-    const judge = await judgePackage(llm, brand, pkg, rendered.review);
-    const passed = !judge.blocking && judge.score >= brand.rules.minBrandScore && issues.length === 0;
-    pkg = {
-      ...pkg,
-      qaAttempts: pkg.qaAttempts + 1,
-      qa: { passed, score: judge.score, issues: [...issues, ...judge.issues], checkedAt: now.toISOString() },
-    };
-    log("produce.qa", { pkg: pkg.id, format: pkg.format, style: pkg.style, attempt: attempt + 1, score: judge.score, passed });
+      // Reserva já as mídias escolhidas: os pacotes em paralelo veem o rodízio na hora.
+      for (const r of pkg.libraryRefs) env.recentUses.set(r, (env.recentUses.get(r) ?? 0) + 1);
+      const rendered = await render(ctx, env, pkg, simRun, react);
+      pkg = transition(rendered.pkg, "rendered", undefined, now);
 
-    if (passed) {
-      pkg = transition(pkg, "qa_passed", undefined, now);
-      return transition(pkg, "pending_review", undefined, now);
+      const issues = deterministicIssues(pkg, brand.rules);
+      const judge = await judgePackage(llm, brand, pkg, rendered.review);
+      const passed = !judge.blocking && judge.score >= brand.rules.minBrandScore && issues.length === 0;
+      pkg = {
+        ...pkg,
+        qaAttempts: pkg.qaAttempts + 1,
+        qa: { passed, score: judge.score, issues: [...issues, ...judge.issues], checkedAt: now.toISOString() },
+      };
+      log("produce.qa", { pkg: pkg.id, format: pkg.format, style: pkg.style, attempt: attempt + 1, score: judge.score, passed });
+
+      if (passed) {
+        pkg = transition(pkg, "qa_passed", undefined, now);
+        return transition(pkg, "pending_review", undefined, now);
+      }
+      if (attempt + 1 >= MAX_QA_ATTEMPTS) return transition(pkg, "discarded", "reprovado no QA", now);
+      feedback = [`O revisor entendeu esta mensagem: "${judge.messageUnderstood}" (clareza ${judge.clarity}/10).`, ...issues, ...judge.issues, judge.fixInstructions].filter(Boolean).join("\n");
     }
-    if (attempt + 1 >= MAX_QA_ATTEMPTS) return transition(pkg, "discarded", "reprovado no QA", now);
-    feedback = [...issues, ...judge.issues, judge.fixInstructions].filter(Boolean).join("\n");
+  } finally {
+    if (react) await rm(react.work, { recursive: true, force: true });
   }
 }
 
 /**
- * Teste em massa: cobre todos os pilares, formatos e estilos, e força o uso
- * da base (Caio, cachorro, viagens, aquário) para validar o sistema inteiro.
+ * Teste em massa: todos os pilares, formatos (carrossel, reel narrado, react,
+ * AlgoViz, story) e estilos, com temas que exigem clareza e imagem do assunto.
  */
 export function testMatrix(): ProduceSlot[] {
-  const s = (pillar: Pillar, format: ProduceSlot["format"], hookType: HookType, style: Style, brief: string, sim = false): ProduceSlot => ({
+  const s = (pillar: Pillar, format: ProduceSlot["format"], hookType: HookType, style: Style, brief: string, extra: Partial<ProduceSlot> = {}): ProduceSlot => ({
     pillar,
     format,
     hookType,
     style,
     brief,
-    sim,
     exploration: false,
+    ...extra,
   });
   return [
-    s("computacao", "carousel", "tutorial", "hud", "Automação prática para pequena empresa com código real e curto. Capa com o Caio recortado (capa:L<id>)."),
-    s("computacao", "carousel", "pergunta", "quadro", "Explicar como uma LLM escolhe a próxima palavra (tokens, probabilidade, temperatura) com diagrama e gráfico."),
-    s("computacao", "slideshow", "lista", "hud", "Reel: 3 automações que todo pequeno negócio deveria ter. Gancho com o Caio (capa:L<id> ou foto)."),
-    s("computacao", "algoviz", "eu_fiz", "hud", "Carrossel da simulação do algoritmo genético nos bairros de SP."),
-    s("computacao", "slideshow", "eu_fiz", "hud", "Reel animando a evolução do algoritmo genético nos bairros de SP (use sim:<de>-<até> em 2 ou 3 cenas).", true),
-    s("computacao", "slideshow", "historia", "quadro", "Reel: como eu automatizaria meu aquário plantado (luz, CO2, temperatura, alertas). Use o vídeo do aquário da base (video:L<id>)."),
-    s("computacao", "carousel", "contrarian", "post", "Opinião forte e bem argumentada sobre IA e trabalho, com slides 'post' e 'eu:L<id>'."),
-    s("geek", "carousel", "pergunta", "quadro", "Geek × computação: o Chapéu Seletor é um classificador (explicar classificação de verdade)."),
-    s("geek", "carousel", "choque", "hud", "Geek × negócios: dá pra construir o JARVIS do Tony Stark hoje? O que já existe e o que falta."),
-    s("geek", "slideshow", "contrarian", "post", "Reel: Darth Vader seria um péssimo CEO (gestão), com humor e o Caio reagindo (eu:L<id>)."),
-    s("bastidores", "carousel", "historia", "post", "Rotina de quem empreende sozinho trabalhando com automação. Use fotos reais do Caio. Sem faturamento nem número de clientes."),
-    s("bastidores", "slideshow", "historia", "hud", "Reel com o cachorro do Caio como 'estagiário' do home office (humor leve). Use as fotos do cachorro."),
-    s("bastidores", "story", "pergunta", "hud", "Story com foto de viagem/praia da base: pausa e pergunta para a audiência."),
-    s("bastidores", "carousel", "tutorial", "quadro", "Como eu organizo a semana em sistemas (diagrama, checklist)."),
-    s("jarvis", "carousel", "eu_fiz", "hud", "Diário do JARVIS: como o robô que criou este post funciona por dentro (chat eu↔jarvis, terminal, diagrama)."),
-    s("jarvis", "slideshow", "choque", "hud", "Reel: meu robô errou feio hoje (humor) — use eu:L<id> com a expressão pensativa do Caio."),
-    s("jarvis", "story", "pergunta", "post", "Story de bastidor do JARVIS com enquete em texto."),
-    s("liberdade", "carousel", "contrarian", "post", "Burocracia para empreender no Brasil pela lente do empreendedor. Sem política partidária, sem afirmar dados sem fonte."),
-    s("liberdade", "story", "historia", "quadro", "Reflexão de domingo (fé e trabalho) com foto de natureza da base."),
-    s("geek", "story", "pergunta", "hud", "Story: enquete — Marvel ou Star Wars para explicar IA no próximo post?"),
+    s("computacao", "carousel", "pergunta", "quadro", "Curiosidade: a IA não entende palavras, ela transforma cada palavra numa lista de números (embeddings). Mostre a conta rei − homem + mulher ≈ rainha com o visual \"formula\" e explique por que isso funciona."),
+    s("computacao", "slideshow", "choque", "hud", "Reel narrado: por que o ChatGPT às vezes inventa coisas com confiança. Ele escolhe a palavra mais provável, não a verdadeira. Termine com como se proteger disso."),
+    s("computacao", "carousel", "lista", "hud", "Automação sem código: 5 tarefas de uma pequena empresa que qualquer pessoa já consegue automatizar só descrevendo para a IA. Mostre um pedido real com o visual \"prompt\". Nada de código."),
+    s("computacao", "slideshow", "pergunta", "quadro", "Reel narrado: como um modelo de IA aprende errando — a função de erro e o gradiente descendente explicados como descer uma montanha no escuro, um passo de cada vez."),
+    s("computacao", "algoviz", "eu_fiz", "hud", "Carrossel da simulação: o que é um algoritmo genético e por que ele achou uma rota curta entre 30 bairros de SP sem testar todas as combinações (explique a explosão combinatória)."),
+    s("computacao", "slideshow", "eu_fiz", "hud", "Reel narrado mostrando a rota evoluindo (use \"sim:<de>-<até>\" em 2 cenas): seleção, cruzamento e mutação explicados em linguagem simples.", { sim: true }),
+    s("computacao", "carousel", "contrarian", "post", "Opinião: saber programar deixou de ser o diferencial; saber descrever bem o problema para a IA é o novo diferencial. Use \"eu:L<id>\" e um \"prompt\" de exemplo."),
+    s("computacao", "react", "choque", "hud", "React em tela dividida: comente o vídeo do robô. O que já é real, o que ainda falta e o que isso muda para quem tem uma pequena empresa.", { sourceQuery: "humanoid robot" }),
+    s("computacao", "slideshow", "historia", "hud", "Reel narrado: como eu automatizaria o meu aquário plantado (luz, temperatura, alerta no celular) só descrevendo para a IA, sem programar. Use o vídeo do aquário da base (video:L<id>)."),
+    s("geek", "carousel", "pergunta", "quadro", "Geek × computação: o Chapéu Seletor de Harry Potter é um classificador. Explique classificação em IA usando ele. Use imagem do Chapéu Seletor (imageQuery)."),
+    s("geek", "slideshow", "contrarian", "post", "Reel narrado Geek × negócios: Darth Vader seria um péssimo CEO — 3 erros de gestão dele e a lição de cada um. Use imagem do Darth Vader (imageQuery)."),
+    s("geek", "carousel", "choque", "hud", "Geek × computação: R2-D2 contra o ChatGPT — o que cada um faz de verdade e qual tecnologia de hoje se parece mais com ele. Use imagem do R2-D2 (imageQuery)."),
+    s("geek", "react", "pergunta", "quadro", "React em tela dividida: comente o show de drones. Explique de forma simples como centenas de drones se coordenam sem bater (algoritmos de enxame) e onde isso é usado.", { sourceQuery: "drone light show" }),
+    s("bastidores", "carousel", "historia", "post", "Como eu organizo o meu dia trabalhando sozinho com tecnologia: blocos de foco, o que eu delego para a IA e o que nunca delego. Use fotos reais do Caio. Sem números da empresa."),
+    s("bastidores", "slideshow", "historia", "hud", "Reel narrado com o cachorro como o \"estagiário\" do home office: humor leve e uma lição clara sobre pausas e foco. Use as fotos do cachorro."),
+    s("bastidores", "story", "pergunta", "hud", "Story com foto de viagem da base: pergunta clara para a audiência sobre pausas."),
+    s("liberdade", "carousel", "contrarian", "post", "O custo invisível da burocracia para quem tem pequena empresa no Brasil e o que o empreendedor consegue controlar. Sem política partidária, sem dados sem fonte."),
+    s("liberdade", "story", "historia", "quadro", "Reflexão de domingo sobre fé e trabalho, curta e clara, com foto de natureza da base."),
+    s("geek", "story", "pergunta", "hud", "Story enquete: Marvel ou Star Wars para o próximo post explicando IA? Use imagem de um dos dois (imageQuery) ou foto do Caio."),
   ];
 }
 
@@ -377,6 +475,8 @@ export interface ProduceOptions {
   /** Roda a matriz de teste (todos os formatos/estilos/pilares). */
   matrix?: boolean;
   concurrency?: number;
+  /** Restringe os formatos sorteados (ex.: testes sem rede). */
+  formats?: ProduceSlot["format"][];
 }
 
 async function pool<T>(items: T[], n: number, fn: (x: T) => Promise<void>): Promise<void> {
@@ -436,7 +536,7 @@ export async function produce(ctx: Ctx, opts: ProduceOptions = {}): Promise<{ cr
 
     // 2) Ideias novas: expressa, matriz de teste ou a cota do dia.
     const ideas = (await ctx.store.listIdeas("new")).filter((i) => !i.expiresAt || new Date(i.expiresAt) > ctx.now);
-    const available = IMPLEMENTED_FORMATS.filter((f) => ctx.platforms.some((p) => KIND_BY_FORMAT[f]?.[p]));
+    const available = IMPLEMENTED_FORMATS.filter((f) => ctx.platforms.some((p) => KIND_BY_FORMAT[f]?.[p]) && (!opts.formats || opts.formats.includes(f)));
     let slots: { slot: ProduceSlot; idea?: Idea }[];
     if (opts.ideaId) {
       const idea = ideas.find((i) => i.id === opts.ideaId);

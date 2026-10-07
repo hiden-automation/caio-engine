@@ -3,14 +3,15 @@ import sharp from "sharp";
 
 const UA = "caio-engine/0.1 (https://github.com/hiden-automation/caio-engine; hiden.automacao@gmail.com)";
 
+// Toda chamada externa tem prazo: um banco de imagens lento não pode travar a produção.
 async function getJson<T>(url: string): Promise<T> {
-  const r = await fetch(url, { headers: { "user-agent": UA } });
+  const r = await fetch(url, { headers: { "user-agent": UA }, signal: AbortSignal.timeout(30_000) });
   if (!r.ok) throw new Error(`${new URL(url).host} respondeu ${r.status}`);
   return (await r.json()) as T;
 }
 
 export async function download(url: string, dst: string): Promise<void> {
-  const r = await fetch(url, { headers: { "user-agent": UA } });
+  const r = await fetch(url, { headers: { "user-agent": UA }, signal: AbortSignal.timeout(180_000) });
   if (!r.ok) throw new Error(`download ${r.status}`);
   await writeFile(dst, Buffer.from(await r.arrayBuffer()));
 }
@@ -83,7 +84,7 @@ async function searchOpenverse(query: string, limit: number): Promise<ImageCandi
 
 /** Baixa e normaliza para JPEG (lado maior ≤ 1600). */
 export async function fetchImage(url: string, dst: string): Promise<void> {
-  const r = await fetch(url, { headers: { "user-agent": UA } });
+  const r = await fetch(url, { headers: { "user-agent": UA }, signal: AbortSignal.timeout(60_000) });
   if (!r.ok) throw new Error(`imagem ${r.status}`);
   await sharp(Buffer.from(await r.arrayBuffer())).rotate().resize(1600, 1600, { fit: "inside", withoutEnlargement: true }).jpeg({ quality: 88 }).toFile(dst);
 }

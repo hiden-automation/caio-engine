@@ -83,5 +83,12 @@ describe("narração", () => {
     expect(spoken("O ChatGPT inventa")).toBe("O Chat G P T inventa");
     expect(spoken("chat ggt")).toBe("Chat G P T");
     expect(spoken("A IA de um CEO")).toBe("A I A de um C E O");
+    // A legenda volta para a escrita: "I" + "A" faladas viram "IA".
+    const { writtenWords } = await import("@jarvis/media");
+    const said = ["A", "I", "A", "de", "um", "C", "E", "O"].map((w, i) => ({ t: i * 0.3, d: 0.2, w }));
+    const out = writtenWords("A IA de um CEO.", said);
+    expect(out.map((w) => w.w)).toEqual(["A", "IA", "de", "um", "CEO"]);
+    expect(out[1]).toMatchObject({ t: 0.3 });
+    expect(out[1]!.d).toBeCloseTo(0.5);
   });
 });

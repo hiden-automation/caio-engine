@@ -39,6 +39,37 @@ export function spoken(text: string): string {
   return SPOKEN.reduce((t, [re, to]) => t.replace(re, to), text);
 }
 
+const norm = (w: string) => w.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+
+/**
+ * A legenda mostra o texto escrito, não a pronúncia: as palavras faladas
+ * ("I", "A") voltam a ser a palavra original ("IA"), com o tempo somado.
+ */
+export function writtenWords(original: string, words: Word[]): Word[] {
+  const tokens = original.split(/\s+/).filter(Boolean);
+  const said = tokens.flatMap((tok, oi) => spoken(tok).split(/\s+/).filter(Boolean).map((sub) => ({ n: norm(sub), oi })));
+  let p = 0;
+  const owner = words.map((w) => {
+    const n = norm(w.w);
+    const hit = said.slice(p, p + 5).findIndex((x) => x.n === n);
+    const at = hit >= 0 ? p + hit : Math.min(p, said.length - 1);
+    p = at + 1;
+    return said[at]?.oi ?? -1;
+  });
+  const out: Word[] = [];
+  for (const [j, w] of words.entries()) {
+    const oi = owner[j]!;
+    const prev = out.at(-1);
+    if (prev && oi >= 0 && owner[j - 1] === oi) {
+      prev.d = w.t + w.d - prev.t;
+      continue;
+    }
+    const text = oi >= 0 ? tokens[oi]!.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}%]+$/gu, "") : w.w;
+    out.push({ t: w.t, d: w.d, w: text || w.w });
+  }
+  return out;
+}
+
 /** Locutor padrão até a voz do Caio ser clonada (JARVIS_VOICE troca). */
 export const DEFAULT_VOICE = "pt-BR-AntonioNeural";
 
@@ -60,8 +91,8 @@ export async function narrate(texts: string[], dir: string, opts: { voice?: stri
     texts.map(async (text, i) => {
       if (!text.trim()) return undefined;
       const file = join(dir, `narracao-${i + 1}.mp3`);
-      const words = JSON.parse(await readFile(file.replace(/\.mp3$/, ".json"), "utf8")) as Word[];
-      return { file, durationSec: (await probe(file)).durationSec, words };
+      const said = JSON.parse(await readFile(file.replace(/\.mp3$/, ".json"), "utf8")) as Word[];
+      return { file, durationSec: (await probe(file)).durationSec, words: writtenWords(text.trim(), said) };
     }),
   );
 }

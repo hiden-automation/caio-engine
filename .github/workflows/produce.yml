@@ -41,7 +41,7 @@ permissions:
 jobs:
   produce:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     env:
       DATA_DIR: data
       PREVIEWS_DIR: previews
@@ -74,6 +74,8 @@ jobs:
       - if: env.EDITS == 'true'
         run: npm run -s jarvis -- produce --edits-only
       - if: ${{ !inputs.rerender && env.EDITS != 'true' }}
+        # Folga para salvar o que ficou pronto mesmo se a rodada passar do tempo.
+        timeout-minutes: 160
         run: |
           args=()
           [ -n "${{ inputs.count }}" ] && args+=(--count "${{ inputs.count }}")

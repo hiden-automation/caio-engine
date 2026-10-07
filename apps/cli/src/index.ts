@@ -112,11 +112,19 @@ async function main(): Promise<void> {
   await writeFeed(ctx);
 }
 
-main().catch((err) => {
-  if (err instanceof BudgetExceededError) {
-    log("pausado: teto de orçamento atingido");
-    return;
-  }
-  logError("fatal", err);
-  process.exitCode = 1;
-});
+main()
+  .catch((err) => {
+    if (err instanceof BudgetExceededError) {
+      log("pausado: teto de orçamento atingido");
+      return;
+    }
+    logError("fatal", err);
+    process.exitCode = 1;
+  })
+  .finally(() => {
+    // Terminou o comando, termina o processo: um download ou processo filho
+    // pendurado não pode segurar o job até o limite de tempo.
+    const open = process.getActiveResourcesInfo().filter((r) => r !== "TTYWrap" && r !== "Timeout");
+    if (open.length) log("exit.pendente", { recursos: [...new Set(open)].join(",") });
+    setTimeout(() => process.exit(), 300).unref();
+  });

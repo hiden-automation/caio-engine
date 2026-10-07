@@ -9,7 +9,7 @@ function summary(p: ContentPackage) {
     pillar: p.pillar,
     format: p.format,
     status: p.status,
-    cover: p.assets.find((a) => a.role === "cover" || a.role === "story")?.path,
+    cover: (p.assets.find((a) => a.role === "cover") ?? p.assets.find((a) => a.role === "story" && a.kind === "image"))?.path,
     variants: p.variants.map((v) => ({
       id: v.id,
       platform: v.platform,

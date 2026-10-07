@@ -482,6 +482,131 @@ export function slideHtml(slide: Slide, ctx: SlideContext): string {
   </section>`;
 }
 
+/**
+ * Cena de vídeo (reel e story) em três faixas que nunca se cruzam:
+ * manchete no topo, o visual no meio ocupando a área e a base livre para a legenda.
+ */
+export function reelSlideHtml(slide: Slide, ctx: SlideContext): string {
+  const [kind = "texto", arg] = (slide.visual ?? "texto").split(":");
+  if (kind === "react") return slideHtml(slide, ctx);
+  const m = mediaFor(ctx, arg);
+  const demo = (s: Slide) => body({ ...s, title: "" }, ctx);
+  const bigAvatar = `<div class="r-ava">${avatarHtml(ctx, "big-av")}${handleOf(ctx.tokens) ? `<div class="handle-big">${esc(handleOf(ctx.tokens))}</div>` : ""}</div>`;
+  const backdrop = (src: string, style = "", frames = "") =>
+    `<div class="bleed"><img class="ph kb" src="${src}"${frames} style="${style}" alt=""><div class="r-shade"></div></div>`;
+  let head = slide.title;
+  let sub = slide.body;
+  let stage = "";
+  let bg = "";
+  const textStage = () => {
+    stage = sub ? `<div class="r-say">${rich(sub)}</div>` : bigAvatar;
+    sub = "";
+  };
+
+  switch (kind) {
+    case "capa":
+      if (m?.cutout) stage = `<img class="r-cutout" src="${m.cutout}" alt="">`;
+      else if (arg === "img" && slide.image) bg = backdrop(slide.image.path) + `<div class="credit">${esc(slide.image.credit)}</div>`;
+      else if (m) bg = backdrop(m.photo, photoStyle(m));
+      else stage = bigAvatar;
+      break;
+    case "imagem":
+      if (slide.image) bg = backdrop(slide.image.path) + `<div class="credit">${esc(slide.image.credit)}</div>`;
+      else textStage();
+      break;
+    case "foto":
+      if (m) bg = backdrop(m.photo, photoStyle(m));
+      else textStage();
+      break;
+    case "video":
+      if (m) bg = backdrop(m.frames?.[0] ?? m.photo, photoStyle(m), m.frames?.length ? ` data-frames='${JSON.stringify(m.frames).replaceAll("'", "&#39;")}'` : "");
+      else textStage();
+      break;
+    case "formula":
+      head = slide.body;
+      sub = "";
+      stage = `<div class="formula">${rich(slide.title)}</div>`;
+      break;
+    case "numero":
+      head = slide.body;
+      sub = "";
+      stage = `<div class="big">${rich(slide.title)}</div>`;
+      break;
+    case "citacao":
+      head = "";
+      stage = `<div class="qmark">“</div><div class="quote">${rich(slide.title)}</div>${sub ? `<p class="small">${rich(sub)}</p>` : ""}`;
+      sub = "";
+      break;
+    case "cta":
+      head = "";
+      sub = "";
+      stage = body(slide, ctx);
+      break;
+    case "sim":
+      stage = demo({ ...slide, body: "" });
+      break;
+    case "prompt":
+    case "chat":
+    case "diagrama":
+    case "grafico":
+    case "comparacao":
+    case "lista":
+    case "checklist":
+    case "codigo":
+    case "terminal":
+    case "post":
+    case "eu":
+      stage = demo(slide);
+      sub = "";
+      break;
+    default:
+      textStage();
+  }
+  const headHtml = head
+    ? `<div class="r-head${bg ? " card" : ""}"><h2 style="--hs:${fit(head, [[18, 104], [36, 90], [60, 76], [999, 64]])}px">${rich(head)}</h2>${sub ? `<p>${rich(sub)}</p>` : ""}</div>`
+    : "";
+  return `<section class="slide ${ctx.canvas} ${ctx.look.style} rs${bg ? " fullbleed" : ""}${head ? "" : " nohead"}">
+    <i class="brk tl"></i><i class="brk tr"></i><i class="brk bl"></i><i class="brk br"></i>
+    ${bg}
+    <div class="hdr${bg ? " on-photo" : ""}">${avatarHtml(ctx)}<div class="who"><b>${nameHtml(ctx)}</b>${handleOf(ctx.tokens) ? `<span>${esc(handleOf(ctx.tokens))}</span>` : ""}</div><div class="meta">${ctx.look.series && ctx.index > 0 ? `<span class="pill">${esc(ctx.look.series)}</span>` : ""}</div></div>
+    ${headHtml}
+    ${stage ? `<div class="r-stage"><div class="r-inner">${stage}</div></div>` : ""}
+  </section>`;
+}
+
+/** CSS das cenas de vídeo (faixas, legenda em pílula). Vem depois do css() base. */
+export function reelCss(t: VisualTokens, look: Look): string {
+  const c = palette(t, look);
+  const card = look.style === "hud" ? "#0F1520f0" : "#FFFFFFf4";
+  return `
+  .rs{padding:0 !important}
+  .rs .r-head{position:absolute;left:80px;right:80px;top:230px;height:330px;display:flex;flex-direction:column;justify-content:flex-end;gap:16px;z-index:3}
+  .rs .r-head h2{font-size:var(--hs) !important;line-height:1.05 !important}
+  .rs .r-head p{font-size:44px !important;line-height:1.3 !important;color:${c.muted}}
+  .rs .r-head.card{height:auto;justify-content:flex-start;background:${card};color:${c.fg};border-radius:34px;padding:36px 42px;border:1px solid ${c.accent}40;box-shadow:0 24px 60px #0007}
+  .rs .r-head.card p{color:${c.fg};opacity:.85}
+  .rs .r-stage{position:absolute;left:72px;right:72px;top:600px;height:770px;display:flex;align-items:center;justify-content:center;z-index:2;transform-origin:50% 50%}
+  .rs.nohead .r-stage{top:250px;height:1120px}
+  .rs .r-inner{width:100%;display:flex;flex-direction:column;gap:30px}
+  .rs .r-inner > .center{flex:none}
+  .rs .r-cutout{display:block;margin:0 auto;height:770px;max-width:100%;object-fit:contain;object-position:bottom;filter:drop-shadow(0 0 60px ${c.accent}40);-webkit-mask-image:linear-gradient(to bottom,#000 85%,transparent);mask-image:linear-gradient(to bottom,#000 85%,transparent)}
+  .rs .r-say{font-family:'${t.fonts.display}',sans-serif;font-weight:700;font-size:74px;line-height:1.15;letter-spacing:-0.02em;background:${look.style === "hud" ? c.surface : "#fff"};border:2px solid ${c.accent}55;border-radius:36px;padding:56px 54px;box-shadow:0 24px 60px #0003}
+  .rs .r-ava{display:flex;flex-direction:column;align-items:center;gap:30px}
+  .rs .r-shade{position:absolute;inset:0;background:linear-gradient(180deg,#0B0F17cc 0%,#0B0F1700 22%,#0B0F1700 62%,#0B0F17aa 100%)}
+  .rs .formula{font-size:68px;text-wrap:balance}
+  .rs .big{font-size:300px;text-align:center}
+  .rs .quote{font-size:84px}
+  .rs .talk{min-height:770px}
+  .rs .talker{right:-60px;bottom:0;height:770px}
+  .rs .bubble{right:300px;font-size:46px}
+  .rs .credit{top:auto;bottom:240px}
+  .rs .pb-text{font-size:52px;line-height:1.4}.rs .pb-head{font-size:26px}.rs .pb-send{font-size:28px}
+  .rs .node{font-size:52px;padding:34px 40px}.rs .node b{font-size:34px}
+  .rs .msg{font-size:50px}.rs .list li,.rs .check li{font-size:58px}.rs .col{font-size:46px}
+  .rs .crow{font-size:44px}
+  `;
+}
+
 export function fontLinks(t: VisualTokens): string {
   const fonts = [t.fonts.display, t.fonts.body, t.fonts.mono]
     .map((f) => `family=${encodeURIComponent(f).replaceAll("%20", "+")}:wght@400;600;700`)

@@ -338,7 +338,7 @@ export function App() {
       <nav className="bottom">
         {(Object.keys(TAB_LABEL) as Tab[]).map((t) => (
           <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)}>
-            {t === "fila" ? `Fila${pending.length ? ` (${pending.length})` : ""}` : TAB_LABEL[t]}
+            {TAB_LABEL[t]}
           </button>
         ))}
       </nav>

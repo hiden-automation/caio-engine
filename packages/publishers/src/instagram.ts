@@ -72,7 +72,16 @@ export class InstagramPublisher implements Publisher {
         caption: variant.caption,
       }));
     } else if (variant.kind === "story") {
-      ({ id: creationId } = await this.post<{ id: string }>(`${this.userId}/media`, { media_type: "STORIES", image_url: urls[0]! }));
+      // Sequência: cada quadro é um story; publica em ordem e o último segue o fluxo normal.
+      const frames: Record<string, string>[] = assets.map((a): Record<string, string> => ({ [a.asset.kind === "video" ? "video_url" : "image_url"]: a.publicUrl! }));
+      for (const f of frames.slice(0, -1)) {
+        const { id } = await this.post<{ id: string }>(`${this.userId}/media`, { media_type: "STORIES", ...f });
+        await this.waitReady(id, "video_url" in f ? 90 : 30);
+        await this.post<{ id: string }>(`${this.userId}/media_publish`, { creation_id: id });
+      }
+      const lastFrame = frames.at(-1)!;
+      ({ id: creationId } = await this.post<{ id: string }>(`${this.userId}/media`, { media_type: "STORIES", ...lastFrame }));
+      if ("video_url" in lastFrame) await this.waitReady(creationId, 90);
     } else if (variant.kind === "image" || variant.kind === "carousel") {
       ({ id: creationId } = await this.post<{ id: string }>(`${this.userId}/media`, { image_url: urls[0]!, caption: variant.caption }));
     } else {

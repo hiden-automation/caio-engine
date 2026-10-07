@@ -99,7 +99,8 @@ export function PackageCard({ conn, pkg, onDecide, mode: where = "pending" }: { 
   const [dx, setDx] = useState(0);
   const start = useRef<{ x: number; y: number } | null>(null);
 
-  const video = pkg.assets.find((a) => a.kind === "video");
+  const videos = pkg.assets.filter((a) => a.kind === "video").sort((a, b) => a.order - b.order);
+  const video = videos[0];
   const images = video ? [] : pkg.assets.filter((a) => a.kind === "image").sort((a, b) => a.order - b.order);
   const posterPath = pkg.assets.find((a) => a.role === "cover")?.path;
   const variant = pkg.variants.find((v) => v.id === tab);
@@ -153,7 +154,7 @@ export function PackageCard({ conn, pkg, onDecide, mode: where = "pending" }: { 
           <span className="chip">estilo {pkg.style}</span>
           {pkg.features.series && <span className="chip">{pkg.features.series}</span>}
           {pkg.libraryRefs.length > 0 && <span className="chip ok">base: {pkg.libraryRefs.join(", ")}</span>}
-          {video?.durationSec && <span className="chip">{Math.round(video.durationSec)}s</span>}
+          {!!pkg.features.durationSec && <span className="chip">{Math.round(pkg.features.durationSec)}s</span>}
           {pkg.qa && <span className="chip">QA {pkg.qa.score.toFixed(1)}</span>}
           {left && <span className={`chip ${pkg.express ? "hot" : ""}`}>expira em {left}</span>}
         </div>
@@ -174,11 +175,19 @@ export function PackageCard({ conn, pkg, onDecide, mode: where = "pending" }: { 
         {pkg.angle && <p className="muted">{pkg.angle}</p>}
       </header>
 
-      {video && (
+      {videos.length === 1 && (
         <div className="media single">
-          <VideoPreview conn={conn} path={video.path} poster={posterPath} />
+          <VideoPreview conn={conn} path={video!.path} poster={posterPath} />
         </div>
       )}
+      {videos.length > 1 && (
+        <div className="media">
+          {videos.map((v) => (
+            <VideoPreview key={v.id} conn={conn} path={v.path} poster={v.path.replace(/\.mp4$/, "-capa.jpg")} />
+          ))}
+        </div>
+      )}
+      {videos.length > 1 && <p className="hint">{videos.length} stories em sequência · deslize →</p>}
       {images.length > 0 && (
         <div className="media">
           {images.map((a) => (
@@ -266,7 +275,7 @@ export function PackageCard({ conn, pkg, onDecide, mode: where = "pending" }: { 
       )}
       {mode === "idle" && where === "scheduled" && (
         <footer className="actions">
-          <button className="btn danger" disabled={busy} onClick={() => setMode("reject")}>{busy ? "Enviando…" : "Rejeitar (tirar da agenda)"}</button>
+          <button className="btn danger" disabled={busy} onClick={() => setMode("reject")}>{busy ? "Enviando…" : "Rejeitar"}</button>
         </footer>
       )}
       {mode === "idle" && where === "rejected" && (

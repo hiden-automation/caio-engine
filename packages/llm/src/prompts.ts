@@ -75,19 +75,24 @@ export const STYLE_GUIDE = `ESTILOS (campo "style"):
 - "post": claro, cara de print de post. Ideal para opinião, bastidores, frases fortes.
 - "quadro": papel pontilhado com anotações à mão. Ideal para EXPLICAR conceitos e a matemática por trás.`;
 
-const NARRATION = `NARRAÇÃO (campo "narration" de cada cena): é o que o locutor fala. Texto corrido, natural, como alguém explicando para um amigo; 1 a 3 frases curtas por cena (até ~35 palavras); sem markdown; escreva nomes do jeito certo (ChatGPT, Darth Vader, IA) — a pronúncia é ajustada automaticamente, NUNCA escreva grafia fonética ("chat ggt"). A narração conduz a história e aparece como legenda sincronizada, então a tela NÃO repete o que é falado. A narração das cenas, lida em sequência, precisa formar um texto coeso do começo ao fim.`;
+const NARRATION = `NARRAÇÃO (campo "narration" de cada cena): é o que o locutor fala. Texto corrido, natural, como alguém explicando para um amigo; 1 ou 2 frases curtas por cena (10 a 18 palavras); sem markdown; escreva nomes do jeito certo (ChatGPT, Darth Vader, IA) — a pronúncia é ajustada automaticamente, NUNCA escreva grafia fonética ("chat ggt"). A narração conduz a história e aparece como legenda sincronizada numa faixa só dela, embaixo. A narração das cenas, lida em sequência, precisa formar um texto coeso do começo ao fim.`;
 
-const REEL_SCREEN = `TEXTO NA TELA DO REEL (a legenda já mostra a narração; texto repetido polui e briga com a legenda):
-- title só na cena 1 (gancho, até 8 palavras — vira a capa) e na última ("cta").
-- Nas outras cenas, title = "" e body = "", EXCETO quando o texto é a própria demonstração: "prompt" (body = o pedido), "chat" (a conversa), "formula" (title = a conta), "diagrama", "grafico", "comparacao", "numero" (title = o número). Nesses, preencha só o que é demonstrado.
-- Toda cena precisa de algo para ver: "imagem" (com imageQuery), "foto:L<id>", "video:L<id>", "eu:L<id>", "capa:L<id>", "sim:<de>-<até>" ou uma demonstração. NÃO use "texto", "lista", "checklist" nem "citacao" em reel.`;
+const REEL_SCREEN = `TELA DO VÍDEO (3 faixas fixas: manchete em cima, visual no meio, legenda da narração embaixo):
+- TODA cena tem title = a MANCHETE da cena: até 7 palavras que resumem o que está sendo falado naquele momento (ex.: "Passo 1: medir o erro", "O pedido que eu mando"). Use **negrito** em 1 palavra-chave.
+- body: opcional, até 8 palavras (aparece pequeno sob a manchete), ou o conteúdo da demonstração.
+- TODA cena precisa de algo para VER no meio, nunca tela vazia. Prefira nesta ordem:
+  1. "imagem" com imageQuery (o assunto de verdade: pessoa, personagem, objeto, lugar), "foto:L<id>", "video:L<id>", "capa:L<id>";
+  2. demonstração: "prompt" (body = o pedido digitado), "chat" (conversa), "diagrama" (etapas, aparecem uma a uma enquanto o locutor fala), "lista", "comparacao", "grafico", "formula" (title = a conta, body = a manchete), "numero" (title = o número, body = a manchete), "sim:<de>-<até>";
+  3. "eu:L<id>" (o Caio com um balão curto).
+- NÃO use "texto" puro nem "citacao" (ficam vazios na tela vertical), exceto "citacao" como fechamento antes do cta.
+- Pelo menos 2 cenas com imagem real (imagem/foto/video).`;
 
 export const FORMAT_SPECS: Record<string, string> = {
   carousel: `CARROSSEL: 6 a 8 slides. Slide 1 = capa com o gancho (promessa clara). Slides do meio: uma ideia por slide, na ordem lógica; até 30 palavras no body. Penúltimo: a conclusão (o que muda para a pessoa). Último: "cta". Em "narration" use "" (carrossel não tem narração).`,
   algoviz: `ALGOVIZ (carrossel com simulação real de algoritmo genético): 6 a 8 slides. Conte a história da execução com os DADOS FORNECIDOS — números exatamente iguais aos dados. Explique o algoritmo de forma simples (população, seleção, cruzamento, mutação) e a curiosidade principal (por que funciona). Use "sim:<geração>" nos slides que mostram a rota. Último: "cta". "narration" = "".`,
-  slideshow: `REEL NARRADO (vídeo vertical de 30 a 45 s com locutor, legenda sincronizada e trilha). 5 a 7 cenas. A NARRAÇÃO INTEIRA (somando as cenas) tem de 80 a 115 palavras — conte; reel longo perde a audiência:
-- Cena 1 = gancho: title até 8 palavras; narração começa direto no assunto e faz uma promessa clara.
-- Cenas do meio: a narração explica; a tela mostra (imagem, foto, vídeo ou demonstração).
+  slideshow: `REEL NARRADO (vídeo vertical de 30 a 45 s com locutor, legenda sincronizada e trilha). 7 a 9 cenas curtas (4 a 5 s cada: ritmo prende). A NARRAÇÃO INTEIRA (somando as cenas) tem de 80 a 115 palavras — conte; reel longo perde a audiência:
+- Cena 1 = gancho: title até 7 palavras com a promessa; narração começa direto no assunto. Use "capa:L<id>" ou "capa:img" (com imageQuery) para a capa ter rosto ou o assunto.
+- Cenas do meio: uma ideia por cena; a narração explica e a tela mostra.
 - Penúltima: conclusão. Última: "cta" (a narração chama para seguir/salvar).
 ${REEL_SCREEN}
 - durationSec = 0 (o tempo vem da narração).
@@ -96,11 +101,19 @@ ${NARRATION}
   react: `REACT EM TELA DIVIDIDA (reel de 30 a 50 s; narração total de 60 a 100 palavras): em cima, o trecho do vídeo de terceiro; embaixo, o Caio comentando. 4 a 6 cenas, nesta ordem:
 - Cena 1: visual "react:intro" — o gancho: por que esse vídeo importa (narração curta).
 - Cena 2: visual "react:clip:<inicio>-<fim>" (segundos do vídeo-fonte, trecho de 6 a 15 s, escolha o melhor momento pela descrição) — narration "" (toca o áudio original); title curto do que acontece.
-- Cenas 3 a 5: visual "react:comentario" — o comentário do Caio: explique o que está por trás, dê opinião e a lição prática. title = "" e body = "" (a legenda mostra a fala).
+- Cenas 3 a 5: visual "react:comentario" — o comentário do Caio: explique o que está por trás, dê opinião e a lição prática. title = manchete curta (até 7 palavras) do ponto daquela cena; body = "".
 - Última: "cta".
 - O trecho de terceiro é no máximo 40% do vídeo. Crédito ao autor é automático; cite o autor na legenda.
 ${NARRATION}`,
-  story: `STORY: 1 slide vertical. Texto curto (até 18 palavras) e claro. Ótimo com "foto:L<id>" (momento do dia, cachorro, viagem) ou "imagem". Pode ser enquete em texto ("A ou B? responde aqui"), pergunta para a audiência, curiosidade rápida ou reflexão. Variante instagram kind "story" com caption "". "narration" = "".`,
+  story: `SEQUÊNCIA DE STORIES (3 a 5 quadros; cada quadro vira um vídeo curto de 5 a 10 s com locutor, legenda e movimento). Uma mensagem só, contada em sequência, tom de conversa próxima (story é mais íntimo que o feed). Escolha UM tipo:
+  a) curiosidade rápida: quadro 1 pergunta curiosa → 1 a 2 quadros com a resposta (demonstração ou imagem) → fechamento "responde aqui o que você achou" ou "o post completo está no perfil";
+  b) bastidor: foto/vídeo do Caio da base ("foto:L<id>"/"video:L<id>") mostrando o momento + o que ele está aprendendo/fazendo + pergunta para a audiência;
+  c) pergunta para a audiência: contexto curto → a pergunta clara → "me responde aqui no direct";
+  d) reflexão (fé, trabalho, domingo): frase de abertura → a ideia → aplicação prática.
+- Cada quadro: title = manchete até 7 palavras; visual que mostra algo (imagem com imageQuery, foto:L<id>, video:L<id>, eu:L<id>, prompt, chat, formula, numero, lista curta); narration de 8 a 20 palavras.
+- PROIBIDO: "enquete", "toca", "vota", "sticker", "link", "arrasta pra cima" (a publicação automática não coloca figurinhas). Interação é sempre "me responde aqui" (vira mensagem no direct).
+- durationSec = 0. Variante instagram kind "story" com caption "".
+${NARRATION}`,
   text: `TEXTO: sem slides (slides = []). X: kind "text" (≤ 280 caracteres) ou "thread". Threads: kind "text" (≤ 500). LinkedIn: kind "text", 600 a 1300 caracteres.`,
 };
 

@@ -24,7 +24,7 @@ import { judgePackage, KIND_BY_FORMAT, RefusedError, writePackage, type WriterOu
 import { clipFrames, encodeReel, framesAt, mixAudio, narrate, writeTrack, type AudioCue } from "@jarvis/media";
 import { allocateDay, IMPLEMENTED_FORMATS, type Slot } from "@jarvis/optimizer";
 import { runGeneticTsp, SP_BAIRROS, type GaRun } from "@jarvis/sims";
-import { reelTiming, renderReel, Renderer, sceneDuration, type Look, type MediaRef, type Style } from "@jarvis/visuals";
+import { reelTiming, renderReel, Renderer, sceneDuration, type Look, type MediaRef, type Style, type VisualTokens } from "@jarvis/visuals";
 import type { Ctx } from "./context.ts";
 import { libraryCatalog, usable } from "./library.ts";
 import { prepareReact, resolveImages, type ReactSourceReady } from "./steps.ts";
@@ -145,6 +145,87 @@ function reactPhoto(env: Env): string | undefined {
   return pool[0]?.id;
 }
 
+interface VideoOpts {
+  tokens: VisualTokens;
+  outDir: string;
+  prefix: string;
+  forRender: (slides: ContentPackage["slides"]) => ContentPackage["slides"];
+  /** Duração mínima de cada cena (story precisa de tempo para ler). */
+  minScene?: number;
+  seedOffset?: number;
+}
+
+/** Cenas → narração do locutor, tempo de cada cena pela fala, trilha, legenda e vídeo. */
+async function videoFrom(ctx: Ctx, env: Env, pkg: ContentPackage, slides: ContentPackage["slides"], look: Look, work: string, o: VideoOpts, sim?: GaRun, react?: ReactSourceReady) {
+  let libraryRefs = pkg.libraryRefs;
+  // Narração do locutor: o tempo de cada cena vem da fala.
+  const narr = await narrate(slides.map((sl) => (clipRange(sl.visual) ? "" : (sl.narration ?? ""))), work);
+  const lead = 0.15;
+  const timed = slides.map((sl, i) => {
+    const range = clipRange(sl.visual);
+    if (range && react) return { ...sl, durationSec: Math.max(4, Math.min(15, range[1] - range[0], react.durationSec - range[0])) };
+    const n = narr[i];
+    return { ...sl, durationSec: Math.max(o.minScene ?? 1.8, n ? n.durationSec + lead + 0.35 : sceneDuration(sl, i)) };
+  });
+  const timing = reelTiming(timed);
+
+  // React: trecho do vídeo de terceiro (em cima) + foto do Caio (embaixo).
+  const cues: AudioCue[] = [];
+  if (react) {
+    const firstClip = timed.find((sl) => clipRange(sl.visual));
+    const startAt = clipRange(firstClip?.visual)?.[0] ?? 0;
+    const [still] = await framesAt(react.file, join(work, `${o.prefix}-still`), [Math.min(startAt + 0.5, react.durationSec - 0.2)]);
+    const caioId = reactPhoto(env);
+    const caioItem = env.library.find((x) => x.id === caioId);
+    look.react = {
+      still: fileUrl(still!),
+      credit: react.credit,
+      clipFrames: {},
+      ...(caioItem
+        ? {
+            caio: {
+              photo: fileUrl(join(ctx.libraryDir, caioItem.derived.full)),
+              cutout: caioItem.derived.cutout ? fileUrl(join(ctx.libraryDir, caioItem.derived.cutout)) : undefined,
+              focus: caioItem.tags?.focus ?? { x: 0.5, y: 0.4 },
+            },
+          }
+        : {}),
+    };
+    if (caioId && !libraryRefs.includes(caioId)) libraryRefs = [...libraryRefs, caioId];
+    for (const [i, sl] of timed.entries()) {
+      const range = clipRange(sl.visual);
+      if (!range) continue;
+      const dur = timing.ends[i]! - timing.starts[i]!;
+      const frames = await clipFrames(react.file, join(work, `${o.prefix}-clip-${i}`), range[0], dur + 0.2);
+      look.react.clipFrames[i] = frames.map(fileUrl);
+      cues.push({ file: react.file, at: timing.starts[i]!, from: range[0], duration: dur, volume: 1 });
+    }
+  }
+
+  // B-roll: quadros do clipe da base, do tamanho da cena que o usa.
+  for (const [i, s] of timed.entries()) {
+    const [kind, id] = (s.visual ?? "").split(":");
+    const it = env.library.find((x) => x.id === id);
+    if (kind !== "video" || !it?.derived.clip || !look.media[id!]) continue;
+    const dur = timing.ends[i]! - timing.starts[i]! + 0.3;
+    const start = Math.max(0, Math.min((it.durationSec ?? dur) - dur, 1));
+    const frames = await clipFrames(join(ctx.libraryDir, it.derived.clip), join(work, `${o.prefix}-${i}`), start, dur);
+    look.media[id!] = { ...look.media[id!]!, frames: frames.map(fileUrl) };
+  }
+  const music = join(work, `${o.prefix}-trilha.wav`);
+  await writeTrack(music, { seed: seedOf(pkg.id) + (o.seedOffset ?? 0), seconds: timing.total + 0.5, energy: pkg.hookType === "choque" || sim ? "energia" : seedOf(pkg.id) % 2 ? "energia" : "calma" });
+  const captions: Record<number, { t: number; d: number; w: string }[]> = {};
+  for (const [i, n] of narr.entries()) {
+    if (!n) continue;
+    cues.push({ file: n.file, at: timing.starts[i]! + lead });
+    captions[i] = n.words.map((w) => ({ ...w, t: w.t + lead }));
+  }
+  const audio = join(work, `${o.prefix}-mix.wav`);
+  await mixAudio(cues, music, timing.total, audio);
+  const reel = await renderReel(env.renderer, o.forRender(timed), { tokens: o.tokens, look, outDir: o.outDir, prefix: o.prefix, sim, audio, captions, encode: encodeReel });
+  return { slides: timed, reel, voiced: narr.some(Boolean), libraryRefs };
+}
+
 async function render(ctx: Ctx, env: Env, pkg: ContentPackage, sim?: GaRun, react?: ReactSourceReady): Promise<Rendered> {
   if (pkg.format === "text" || !pkg.slides.length) return { pkg: { ...pkg, assets: [] }, review: [] };
   const relDir = `${pkg.createdAt.slice(0, 7)}/${pkg.id}`;
@@ -159,80 +240,16 @@ async function render(ctx: Ctx, env: Env, pkg: ContentPackage, sim?: GaRun, reac
   if (pkg.format === "slideshow" || pkg.format === "react") {
     const work = await mkdtemp(join(tmpdir(), "jarvis-reel-"));
     try {
-      // Narração do locutor: o tempo de cada cena vem da fala.
-      const narr = await narrate(pkg.slides.map((sl) => (clipRange(sl.visual) ? "" : (sl.narration ?? ""))), work);
-      const lead = 0.15;
-      const timed = pkg.slides.map((sl, i) => {
-        const range = clipRange(sl.visual);
-        if (range && react) return { ...sl, durationSec: Math.max(4, Math.min(15, range[1] - range[0], react.durationSec - range[0])) };
-        const n = narr[i];
-        return { ...sl, durationSec: n ? Math.max(1.8, n.durationSec + lead + 0.35) : sceneDuration(sl, i) };
-      });
-      pkg = { ...pkg, slides: timed };
-      const timing = reelTiming(timed);
-
-      // React: trecho do vídeo de terceiro (em cima) + foto do Caio (embaixo).
-      const cues: AudioCue[] = [];
-      if (pkg.format === "react" && react) {
-        const firstClip = timed.find((sl) => clipRange(sl.visual));
-        const startAt = clipRange(firstClip?.visual)?.[0] ?? 0;
-        const [still] = await framesAt(react.file, join(work, "still"), [Math.min(startAt + 0.5, react.durationSec - 0.2)]);
-        const caioId = reactPhoto(env);
-        const caioItem = env.library.find((x) => x.id === caioId);
-        look.react = {
-          still: fileUrl(still!),
-          credit: react.credit,
-          clipFrames: {},
-          ...(caioItem
-            ? {
-                caio: {
-                  photo: fileUrl(join(ctx.libraryDir, caioItem.derived.full)),
-                  cutout: caioItem.derived.cutout ? fileUrl(join(ctx.libraryDir, caioItem.derived.cutout)) : undefined,
-                  focus: caioItem.tags?.focus ?? { x: 0.5, y: 0.4 },
-                },
-              }
-            : {}),
-        };
-        if (caioId && !pkg.libraryRefs.includes(caioId)) pkg = { ...pkg, libraryRefs: [...pkg.libraryRefs, caioId] };
-        for (const [i, sl] of timed.entries()) {
-          const range = clipRange(sl.visual);
-          if (!range) continue;
-          const dur = timing.ends[i]! - timing.starts[i]!;
-          const frames = await clipFrames(react.file, join(work, `clip-${i}`), range[0], dur + 0.2);
-          look.react.clipFrames[i] = frames.map(fileUrl);
-          cues.push({ file: react.file, at: timing.starts[i]!, from: range[0], duration: dur, volume: 1 });
-        }
-      }
-
-      // B-roll: quadros do clipe da base, do tamanho da cena que o usa.
-      for (const [i, s] of timed.entries()) {
-        const [kind, id] = (s.visual ?? "").split(":");
-        const it = env.library.find((x) => x.id === id);
-        if (kind !== "video" || !it?.derived.clip || !look.media[id!]) continue;
-        const dur = timing.ends[i]! - timing.starts[i]! + 0.3;
-        const start = Math.max(0, Math.min((it.durationSec ?? dur) - dur, 1));
-        const frames = await clipFrames(join(ctx.libraryDir, it.derived.clip), join(work, `${i}`), start, dur);
-        look.media[id!] = { ...look.media[id!]!, frames: frames.map(fileUrl) };
-      }
-      const music = join(work, "trilha.wav");
-      await writeTrack(music, { seed: seedOf(pkg.id), seconds: timing.total + 0.5, energy: pkg.hookType === "choque" || sim ? "energia" : seedOf(pkg.id) % 2 ? "energia" : "calma" });
-      const captions: Record<number, { t: number; d: number; w: string }[]> = {};
-      for (const [i, n] of narr.entries()) {
-        if (!n) continue;
-        cues.push({ file: n.file, at: timing.starts[i]! + lead });
-        captions[i] = n.words.map((w) => ({ ...w, t: w.t + lead }));
-      }
-      const audio = join(work, "mix.wav");
-      await mixAudio(cues, music, timing.total, audio);
-      const reel = await renderReel(env.renderer, forRender(timed), { tokens, look, outDir, prefix: "reel", sim, audio, captions, encode: encodeReel });
+      const v = await videoFrom(ctx, env, pkg, pkg.slides, look, work, { tokens, outDir, prefix: "reel", forRender }, sim, pkg.format === "react" ? react : undefined);
+      pkg = { ...pkg, slides: v.slides, libraryRefs: v.libraryRefs };
+      const reel = v.reel;
       const assets: Asset[] = [
         { id: "video", kind: "video", path: assetPath(reel.video), role: "reel", order: 0, width: 1080, height: 1920, durationSec: reel.durationSec },
         { id: "img-1", kind: "image", path: assetPath(reel.cover), role: "cover", order: 1, width: 1080, height: 1920 },
       ];
-      const voiced = narr.some(Boolean);
-      const variants = pkg.variants.map((v) => ({ ...v, assetIds: ["video", "img-1"], aiLabel: voiced }));
+      const variants = pkg.variants.map((x) => ({ ...x, assetIds: ["video", "img-1"], aiLabel: v.voiced }));
       return {
-        pkg: { ...pkg, assets, variants, features: { ...pkg.features, durationSec: reel.durationSec, voice: voiced ? "locutor" : "nenhuma" } },
+        pkg: { ...pkg, assets, variants, features: { ...pkg.features, durationSec: reel.durationSec, voice: v.voiced ? "locutor" : "nenhuma" } },
         review: [reel.cover, ...reel.stills],
       };
     } finally {
@@ -240,13 +257,41 @@ async function render(ctx: Ctx, env: Env, pkg: ContentPackage, sim?: GaRun, reac
     }
   }
 
-  const story = pkg.format === "story";
-  const result = await env.renderer.render(forRender(story ? pkg.slides.slice(0, 1) : pkg.slides), {
-    canvas: story ? "story" : "carousel",
+  if (pkg.format === "story") {
+    // Sequência de stories: cada quadro é um vídeo curto, narrado, com legenda e movimento.
+    const work = await mkdtemp(join(tmpdir(), "jarvis-story-"));
+    try {
+      const assets: Asset[] = [];
+      const slides: ContentPackage["slides"] = [];
+      let voiced = false;
+      let total = 0;
+      for (const [i, sl] of pkg.slides.slice(0, 5).entries()) {
+        const v = await videoFrom(ctx, env, pkg, [sl], look, work, { tokens, outDir, prefix: `story-${i + 1}`, forRender, minScene: 5, seedOffset: i + 1 });
+        slides.push(...v.slides);
+        voiced ||= v.voiced;
+        total += v.reel.durationSec;
+        assets.push(
+          { id: `video-${i + 1}`, kind: "video", path: assetPath(v.reel.video), role: "story", order: i, width: 1080, height: 1920, durationSec: v.reel.durationSec },
+          { id: `capa-${i + 1}`, kind: "image", path: assetPath(v.reel.cover), role: "cover", order: 100 + i, width: 1080, height: 1920 },
+        );
+      }
+      const videoIds = assets.filter((a) => a.kind === "video").map((a) => a.id);
+      const variants = pkg.variants.map((x) => ({ ...x, assetIds: videoIds, aiLabel: voiced }));
+      return {
+        pkg: { ...pkg, slides, assets, variants, features: { ...pkg.features, durationSec: Math.round(total), voice: voiced ? "locutor" : "nenhuma" } },
+        review: assets.filter((a) => a.role === "cover").map((a) => join(ctx.store.previewsDir, a.path)),
+      };
+    } finally {
+      await rm(work, { recursive: true, force: true });
+    }
+  }
+
+  const result = await env.renderer.render(forRender(pkg.slides), {
+    canvas: "carousel",
     tokens,
     look,
     outDir,
-    prefix: story ? "story" : "slide",
+    prefix: "slide",
     pdf: pkg.variants.some((v) => v.kind === "document"),
     sim,
   });
@@ -254,10 +299,10 @@ async function render(ctx: Ctx, env: Env, pkg: ContentPackage, sim?: GaRun, reac
     id: `img-${i + 1}`,
     kind: "image",
     path: assetPath(file),
-    role: story ? "story" : i === 0 ? "cover" : "slide",
+    role: i === 0 ? "cover" : "slide",
     order: i,
     width: 1080,
-    height: story ? 1920 : 1350,
+    height: 1350,
   }));
   if (result.pdf) assets.push({ id: "pdf", kind: "pdf", path: assetPath(result.pdf), role: "document", order: 0 });
   const imageIds = assets.filter((a) => a.kind === "image").map((a) => a.id);
@@ -462,10 +507,11 @@ export function testMatrix(): ProduceSlot[] {
     s("geek", "react", "pergunta", "quadro", "React em tela dividida: comente o show de drones. Explique de forma simples como centenas de drones se coordenam sem bater (algoritmos de enxame) e onde isso é usado.", { sourceQuery: "drone light show" }),
     s("bastidores", "carousel", "historia", "post", "Como eu organizo o meu dia trabalhando sozinho com tecnologia: blocos de foco, o que eu delego para a IA e o que nunca delego. Use fotos reais do Caio. Sem números da empresa."),
     s("bastidores", "slideshow", "historia", "hud", "Reel narrado com o cachorro como o \"estagiário\" do home office: humor leve e uma lição clara sobre pausas e foco. Use as fotos do cachorro."),
-    s("bastidores", "story", "pergunta", "hud", "Story com foto de viagem da base: pergunta clara para a audiência sobre pausas."),
+    s("bastidores", "story", "pergunta", "hud", "Sequência de stories (bastidor): foto de viagem da base, o que uma pausa de verdade faz pelo trabalho de quem empreende sozinho, e a pergunta \"quando foi sua última pausa sem celular? me responde aqui\"."),
     s("liberdade", "carousel", "contrarian", "post", "O custo invisível da burocracia para quem tem pequena empresa no Brasil e o que o empreendedor consegue controlar. Sem política partidária, sem dados sem fonte."),
-    s("liberdade", "story", "historia", "quadro", "Reflexão de domingo sobre fé e trabalho, curta e clara, com foto de natureza da base."),
-    s("geek", "story", "pergunta", "hud", "Story enquete: Marvel ou Star Wars para o próximo post explicando IA? Use imagem de um dos dois (imageQuery) ou foto do Caio."),
+    s("liberdade", "story", "historia", "quadro", "Sequência de stories (reflexão de domingo): fé e trabalho bem feito mesmo quando ninguém vê, com foto de natureza da base. Curta, clara e com aplicação prática."),
+    s("computacao", "story", "pergunta", "hud", "Sequência de stories (curiosidade rápida): por que a IA às vezes responde com muita certeza algo errado. Mostre um chat curto de exemplo e feche com \"já aconteceu com você? me responde aqui\"."),
+    s("geek", "story", "pergunta", "quadro", "Sequência de stories (curiosidade rápida geek): dá para ter hoje um assistente como o do Homem de Ferro? O que já dá para fazer com IA e o que ainda é ficção. Use imagem do Homem de Ferro (imageQuery)."),
   ];
 }
 

@@ -161,3 +161,6 @@ textarea:focus, input:focus { outline: 2px solid var(--accent); outline-offset: 
 .chips.when{margin-top:6px}
 .status-bad{margin:6px 0 0;font-size:13px;color:var(--danger)}
 .slot-time{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:13px;color:var(--muted);margin:4px 0 -6px}
+.group summary{cursor:pointer;list-style:none;padding:6px 0}
+.group summary::before{content:"▸ ";}
+.group[open] summary::before{content:"▾ ";}

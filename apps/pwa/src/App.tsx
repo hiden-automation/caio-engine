@@ -136,13 +136,15 @@ function Rejected({ feed, conn, hidden, onDecide }: { feed: Feed; conn: Conn; hi
       {groups
         .filter(([, , list]) => list.length)
         .map(([title, hint, list]) => (
-          <div key={title} className="list">
-            <h3 className="day">{title} ({list.length})</h3>
-            {hint && <p className="muted small">{hint}</p>}
-            {list.map((p) => (
-              <PackageCard key={p.id} conn={conn} pkg={p} mode="rejected" onDecide={(d) => onDecide(d, "rejected")} />
-            ))}
-          </div>
+          <details key={title} className="group" open={title === groups[0]![0]}>
+            <summary className="day">{title} ({list.length})</summary>
+            <div className="list">
+              {hint && <p className="muted small">{hint}</p>}
+              {list.map((p) => (
+                <PackageCard key={p.id} conn={conn} pkg={p} mode="rejected" onDecide={(d) => onDecide(d, "rejected")} />
+              ))}
+            </div>
+          </details>
         ))}
     </section>
   );

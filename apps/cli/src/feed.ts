@@ -42,10 +42,13 @@ export async function writeFeed(ctx: Ctx): Promise<void> {
       .sort((a, b) => Number(b.express) - Number(a.express) || byNewest(a, b)),
     // Agenda e Rejeitados mostram o conteúdo completo (dá para rever, tirar da agenda ou recuperar).
     scheduled: pkgs.filter((p) => p.status === "scheduled").sort((a, b) => firstSlot(a).localeCompare(firstSlot(b))),
-    rejected: pkgs
-      .filter((p) => (p.status === "rejected" || p.status === "expired" || p.status === "discarded") && new Date(p.updatedAt).getTime() > recentCutoff)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .slice(0, 40),
+    // Os que ele rejeitou aparecem todos; expirados e reprovados pelo revisor, só os mais recentes.
+    rejected: (["rejected", "expired", "discarded"] as const).flatMap((status) =>
+      pkgs
+        .filter((p) => p.status === status && new Date(p.updatedAt).getTime() > recentCutoff)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .slice(0, status === "rejected" ? 60 : 12),
+    ),
     published: pkgs
       .filter((p) => p.status === "published" || p.status === "failed")
       .sort(byNewest)

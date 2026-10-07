@@ -1,7 +1,7 @@
 import type { Format, Strategy } from "@jarvis/core";
 
 /** Formatos que já têm fábrica implementada. O resto entra com peso 0 até existir. */
-export const IMPLEMENTED_FORMATS: readonly Format[] = ["carousel", "algoviz", "text", "story"];
+export const IMPLEMENTED_FORMATS: readonly Format[] = ["carousel", "algoviz", "slideshow", "text", "story"];
 
 export function defaultStrategy(now = new Date()): Strategy {
   return {
@@ -13,13 +13,13 @@ export function defaultStrategy(now = new Date()): Strategy {
     exploration: 0.2,
     packagesPerDay: 6,
     formatWeights: {
-      carousel: 40,
-      algoviz: 15,
-      text: 30,
+      carousel: 30,
+      algoviz: 10,
+      text: 20,
       story: 15,
       demo: 0,
       voice_reel: 0,
-      slideshow: 0,
+      slideshow: 25,
       react: 0,
       cut: 0,
       longform: 0,

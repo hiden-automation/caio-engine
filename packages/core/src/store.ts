@@ -6,6 +6,7 @@ import {
   BrandRules,
   ContentPackage,
   Idea,
+  LibraryItem,
   MetricSnapshot,
   Review,
   Signal,
@@ -122,6 +123,25 @@ export class FsStore {
 
   async loadPackage(id: string): Promise<ContentPackage | undefined> {
     return (await this.listPackages()).find((p) => p.id === id);
+  }
+
+  // ---- base de mídia ("jogar na base") -------------------------------------
+
+  async library(): Promise<LibraryItem[]> {
+    if (!(await this.exists("library/index.json"))) return [];
+    return (JSON.parse(await this.readText("library/index.json")) as unknown[]).map((i) => LibraryItem.parse(i));
+  }
+
+  saveLibrary(items: LibraryItem[]): Promise<void> {
+    return this.writeJson("library/index.json", items.map((i) => LibraryItem.parse(i)));
+  }
+
+  async libraryMeta(): Promise<{ avatar?: string; avatarFrom?: string }> {
+    return (await this.exists("library/meta.json")) ? (JSON.parse(await this.readText("library/meta.json")) as { avatar?: string; avatarFrom?: string }) : {};
+  }
+
+  saveLibraryMeta(meta: { avatar?: string; avatarFrom?: string }): Promise<void> {
+    return this.writeJson("library/meta.json", meta);
   }
 
   // ---- ideias e sinais ----------------------------------------------------

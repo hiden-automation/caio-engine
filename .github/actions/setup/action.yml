@@ -1,5 +1,5 @@
 name: preparar-jarvis
-description: Node, dependências, caio-data (main) e branch previews clonados no runner.
+description: Node, dependências, caio-data (main) e branches previews/library clonados no runner.
 inputs:
   data-token:
     description: PAT fine-grained com Contents read/write no caio-data e no caio-cdn
@@ -9,6 +9,9 @@ inputs:
     required: true
   browser:
     description: instalar Chromium (render de artes)
+    default: "false"
+  media:
+    description: base de mídia (branch library) + recorte de fundo (Python/rembg)
     default: "false"
 runs:
   using: composite
@@ -22,11 +25,26 @@ runs:
     - if: inputs.browser == 'true'
       run: npx playwright install --with-deps chromium
       shell: bash
-    - name: clonar caio-data e previews
+    - if: inputs.media == 'true'
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: packages/media/scripts/requirements.txt
+    - if: inputs.media == 'true'
+      run: pip install -q -r packages/media/scripts/requirements.txt
+      shell: bash
+    - if: inputs.media == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ~/.u2net
+        key: rembg-isnet-general-use-v1
+    - name: clonar caio-data, previews e library
       shell: bash
       env:
         TOKEN: ${{ inputs.data-token }}
         REPO: ${{ inputs.data-repo }}
+        MEDIA: ${{ inputs.media }}
       run: |
         url="https://x-access-token:${TOKEN}@github.com/${REPO}.git"
         git config --global user.name "jarvis"
@@ -34,4 +52,9 @@ runs:
         git clone --quiet --depth 1 "$url" data
         if ! git clone --quiet --depth 1 --branch previews "$url" previews 2>/dev/null; then
           mkdir -p previews && git -C previews init -q -b previews && git -C previews remote add origin "$url"
+        fi
+        if [ "$MEDIA" = "true" ]; then
+          if ! git clone --quiet --depth 1 --branch library "$url" library 2>/dev/null; then
+            mkdir -p library/raw && git -C library init -q -b library && git -C library remote add origin "$url"
+          fi
         fi

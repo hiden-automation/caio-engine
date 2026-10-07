@@ -16,6 +16,7 @@ jobs:
     env:
       DATA_DIR: data
       PREVIEWS_DIR: previews
+      LIBRARY_DIR: library
       JARVIS_PLATFORMS: ${{ vars.JARVIS_PLATFORMS }}
       # claude-code = assinatura (CLAUDE_CODE_OAUTH_TOKEN); api = paga por token.
       JARVIS_LLM: ${{ vars.JARVIS_LLM || 'claude-code' }}
@@ -29,8 +30,11 @@ jobs:
         with:
           data-token: ${{ secrets.DATA_TOKEN }}
           data-repo: ${{ vars.DATA_REPO }}
+          media: "true"
       - if: env.JARVIS_LLM == 'claude-code'
         run: npm install -g @anthropic-ai/claude-code --no-audit --no-fund
+      # Mídias novas jogadas na base pelo PWA: etiqueta, recorta e prepara.
+      - run: npm run -s jarvis -- library
       - id: hunt
         run: npm run -s jarvis -- trends
       # Via expressa: produz na hora o pacote da tendência (aprovar em até 6h).

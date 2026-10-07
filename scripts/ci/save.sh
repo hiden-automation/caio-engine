@@ -25,6 +25,7 @@ push_with_retry() {
   exit 1
 }
 
-# Previews primeiro: o feed do main só aponta para imagens que já existem.
+# Previews e base primeiro: o feed do main só aponta para arquivos que já existem.
 push_with_retry previews previews
+if [ -d library/.git ]; then push_with_retry library library; fi
 push_with_retry data main

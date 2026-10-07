@@ -11,6 +11,13 @@ on:
       idea:
         description: id de uma ideia específica (via expressa)
         default: ""
+      matrix:
+        description: teste em massa (todos os formatos, estilos e pilares)
+        type: boolean
+        default: false
+      concurrency:
+        description: pacotes em paralelo
+        default: "3"
 concurrency:
   group: jarvis-data
   cancel-in-progress: false
@@ -19,10 +26,11 @@ permissions:
 jobs:
   produce:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     env:
       DATA_DIR: data
       PREVIEWS_DIR: previews
+      LIBRARY_DIR: library
       JARVIS_PLATFORMS: ${{ vars.JARVIS_PLATFORMS }}
       # claude-code = assinatura (CLAUDE_CODE_OAUTH_TOKEN); api = paga por token.
       JARVIS_LLM: ${{ vars.JARVIS_LLM || 'claude-code' }}
@@ -35,13 +43,17 @@ jobs:
           data-token: ${{ secrets.DATA_TOKEN }}
           data-repo: ${{ vars.DATA_REPO }}
           browser: "true"
+          media: "true"
       - if: env.JARVIS_LLM == 'claude-code'
         run: npm install -g @anthropic-ai/claude-code --no-audit --no-fund
       - run: npm run -s jarvis -- reviews
+      - run: npm run -s jarvis -- library
       - run: |
           args=()
           [ -n "${{ inputs.count }}" ] && args+=(--count "${{ inputs.count }}")
           [ -n "${{ inputs.idea }}" ] && args+=(--idea "${{ inputs.idea }}")
+          [ "${{ inputs.matrix }}" = "true" ] && args+=(--matrix)
+          args+=(--concurrency "${{ inputs.concurrency || '2' }}")
           npm run -s jarvis -- produce "${args[@]}"
       - if: always()
         run: bash scripts/ci/save.sh "produção"

@@ -1,0 +1,13 @@
+{
+  "name": "@jarvis/media",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@jarvis/core": "*",
+    "ffmpeg-static": "^5.2.0",
+    "ffprobe-static": "^3.1.0",
+    "sharp": "^0.34.0"
+  }
+}

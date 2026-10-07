@@ -15,6 +15,8 @@ export function fakePackage(overrides: Partial<ContentPackage> = {}): ContentPac
     hooks: [],
     hookType: "eu_fiz",
     slides: [{ title: "Slide 1", body: "Texto" }],
+    style: "hud",
+    libraryRefs: [],
     sources: [],
     assets: [],
     variants: [

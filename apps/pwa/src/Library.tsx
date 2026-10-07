@@ -1,9 +1,27 @@
 import { useCallback, useEffect, useState } from "react";
-import { listLibrary, MAX_UPLOAD_BYTES, previewUrl, uploadToLibrary, type Conn, type LibraryItem } from "./github.ts";
+import { getJson, listLibrary, MAX_UPLOAD_BYTES, previewUrl, uploadToLibrary, type Conn, type LibraryItem } from "./github.ts";
+import type { LibraryItem as Tagged } from "@jarvis/core/schemas";
 
 const IMAGE = /\.(jpe?g|png|webp|gif)$/i;
 
-function Thumb({ conn, item }: { conn: Conn; item: LibraryItem }) {
+function Thumb({ conn, item, info }: { conn: Conn; item: LibraryItem; info?: Tagged }) {
+  const t = info?.tags;
+  return (
+    <div className="thumb-wrap">
+      <RawThumb conn={conn} item={item} />
+      {info && (
+        <div className="thumb-tag">
+          <b>{info.id}</b> {t ? t.description : "na fila para a IA olhar"}
+          {t?.political && <span className="bad"> · político: não uso</span>}
+          {t?.sensitive && <span className="bad"> · sensível: não uso</span>}
+          {info.usage.count > 0 && <span> · usada {info.usage.count}x</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RawThumb({ conn, item }: { conn: Conn; item: LibraryItem }) {
   const [src, setSrc] = useState<string>();
   useEffect(() => {
     if (!IMAGE.test(item.path) || item.size > 8 * 1024 * 1024) return;
@@ -23,11 +41,14 @@ function Thumb({ conn, item }: { conn: Conn; item: LibraryItem }) {
  */
 export function Library({ conn, toast }: { conn: Conn; toast: (m: string) => void }) {
   const [items, setItems] = useState<LibraryItem[] | null>(null);
+  const [tags, setTags] = useState<Record<string, Tagged>>({});
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   const load = useCallback(async () => {
     try {
       setItems((await listLibrary(conn)).reverse());
+      const index = await getJson<Tagged[]>(conn, "library/index.json").catch(() => [] as Tagged[]);
+      setTags(Object.fromEntries(index.map((i) => [i.raw, i])));
     } catch (err) {
       toast(err instanceof Error ? err.message : "Falhou ao listar");
     }
@@ -74,7 +95,7 @@ export function Library({ conn, toast }: { conn: Conn; toast: (m: string) => voi
       </p>
       <div className="grid">
         {(items ?? []).slice(0, 60).map((it) => (
-          <Thumb key={it.path} conn={conn} item={it} />
+          <Thumb key={it.path} conn={conn} item={it} info={tags[it.path]} />
         ))}
       </div>
     </section>

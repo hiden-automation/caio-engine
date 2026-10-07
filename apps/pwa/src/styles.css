@@ -141,3 +141,9 @@ textarea:focus, input:focus { outline: 2px solid var(--accent); outline-offset: 
 .thumb { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; background: var(--surface); }
 .thumb.file { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 26px; padding: 6px; }
 .thumb.file span { font-size: 10px; color: var(--muted); word-break: break-all; text-align: center; max-height: 2.6em; overflow: hidden; }
+
+.media.single{display:flex;justify-content:center}
+.media.single .video{flex:0 0 auto;width:min(100%,360px);aspect-ratio:9/16;height:auto;border-radius:14px;background:#000}
+.thumb-wrap{position:relative}
+.thumb-tag{position:absolute;left:0;right:0;bottom:0;padding:4px 6px;font-size:10px;line-height:1.25;background:linear-gradient(transparent,#000c);color:#fff}
+.thumb-tag b{color:#3DDC97}.thumb-tag .bad{color:#FF5C7A;font-weight:700}

@@ -70,7 +70,7 @@ export function previewUrl(conn: Conn, path: string, ref = "previews"): Promise<
       key,
       gh(conn, `contents/${path.split("/").map(encodeURIComponent).join("/")}?ref=${ref}`, {}, "application/vnd.github.raw+json")
         .then((r) => r.blob())
-        .then((b) => URL.createObjectURL(b))
+        .then((b) => URL.createObjectURL(path.endsWith(".mp4") ? new Blob([b], { type: "video/mp4" }) : b))
         .catch((err: unknown) => {
           blobCache.delete(key);
           throw err;

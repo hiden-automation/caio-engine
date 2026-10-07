@@ -3,6 +3,8 @@ import { z } from "zod";
 /** `brand/visual-tokens.json` no caio-data. Toda arte sai destes tokens. */
 export const VisualTokens = z.object({
   name: z.string().default("Caio"),
+  /** Nome que aparece no cabeçalho de toda arte, ao lado do avatar. */
+  displayName: z.string().default("Caio Vilor"),
   handle: z.string().default("@caio"),
   colors: z
     .object({

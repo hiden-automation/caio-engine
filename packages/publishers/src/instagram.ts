@@ -29,8 +29,8 @@ export class InstagramPublisher implements Publisher {
     return http<T>(`${this.base}/${path}?${q}`);
   }
 
-  private async waitReady(containerId: string): Promise<void> {
-    for (let i = 0; i < 30; i++) {
+  private async waitReady(containerId: string, tries = 30): Promise<void> {
+    for (let i = 0; i < tries; i++) {
       const { status_code } = await this.get<{ status_code: string }>(containerId, { fields: "status_code" });
       if (status_code === "FINISHED") return;
       if (status_code === "ERROR" || status_code === "EXPIRED") throw new PublishError(`Container ${status_code}`, false);
@@ -46,7 +46,20 @@ export class InstagramPublisher implements Publisher {
     });
 
     let creationId: string;
-    if (variant.kind === "carousel" && urls.length > 1) {
+    if (variant.kind === "reel") {
+      const video = assets.find((a) => a.asset.kind === "video")?.publicUrl;
+      const cover = assets.find((a) => a.asset.kind === "image")?.publicUrl;
+      if (!video) throw new PublishError("Reel sem vídeo", false);
+      ({ id: creationId } = await this.post<{ id: string }>(`${this.userId}/media`, {
+        media_type: "REELS",
+        video_url: video,
+        caption: variant.caption,
+        share_to_feed: "true",
+        ...(cover ? { cover_url: cover } : {}),
+      }));
+      // Vídeo demora para processar no servidor da Meta.
+      await this.waitReady(creationId, 90);
+    } else if (variant.kind === "carousel" && urls.length > 1) {
       const children: string[] = [];
       for (const url of urls.slice(0, 10)) {
         const { id } = await this.post<{ id: string }>(`${this.userId}/media`, { image_url: url, is_carousel_item: "true" });

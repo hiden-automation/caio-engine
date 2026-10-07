@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import type { z } from "zod";
@@ -63,6 +65,8 @@ export interface StructuredRequest<S extends z.ZodType> {
   user: string | Anthropic.Beta.BetaContentBlockParam[];
   schema: S;
   maxTokens?: number;
+  /** Imagens locais (JPEG/PNG) para o modelo enxergar. */
+  images?: string[];
 }
 
 export class Llm {
@@ -81,11 +85,12 @@ export class Llm {
     if (this.claudeCode || (!this.client && backend() === "claude-code")) return this.viaClaudeCode(req);
     this.client ??= new Anthropic();
     const model = modelFor(req.role);
+    const user = req.images?.length ? await withImages(req.user, req.images) : req.user;
     const response = await this.client.beta.messages.parse({
       model,
       max_tokens: req.maxTokens ?? 16000,
       system: [{ type: "text", text: req.stableSystem, cache_control: { type: "ephemeral" } }],
-      messages: [{ role: "user", content: req.user }],
+      messages: [{ role: "user", content: user }],
       output_config: { effort: effortFor(req.role), format: betaZodOutputFormat(req.schema) },
       ...(supportsFallback(model) ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
     });
@@ -111,7 +116,12 @@ export class Llm {
   private async viaClaudeCode<S extends z.ZodType>(req: StructuredRequest<S>): Promise<z.infer<S>> {
     if (typeof req.user !== "string") throw new Error("Modo claude-code só aceita entrada em texto");
     const model = modelFor(req.role);
-    const raw = await (this.claudeCode ?? runClaudeCli)(claudeCodeArgs(model, effortFor(req.role), req.stableSystem, req.schema), req.user);
+    const images = (req.images ?? []).map((f) => resolve(f));
+    const prompt = images.length
+      ? `${req.user}\n\nImagens (abra cada uma com a ferramenta Read antes de responder):\n${images.map((f, i) => `[${i + 1}] ${f}`).join("\n")}`
+      : req.user;
+    const dirs = [...new Set(images.map((f) => dirname(f)))];
+    const raw = await (this.claudeCode ?? runClaudeCli)(claudeCodeArgs(model, effortFor(req.role), req.stableSystem, req.schema, dirs), prompt);
     let res: ClaudeCodeResult;
     try {
       res = JSON.parse(raw) as ClaudeCodeResult;
@@ -121,7 +131,7 @@ export class Llm {
     log("llm.call", {
       role: req.role,
       backend: "claude-code",
-      model: Object.keys(res.modelUsage ?? {})[0] ?? model,
+      model: Object.entries((res.modelUsage ?? {}) as Record<string, { outputTokens?: number }>).sort((a, b) => (b[1].outputTokens ?? 0) - (a[1].outputTokens ?? 0))[0]?.[0] ?? model,
       in: res.usage?.input_tokens ?? 0,
       out: res.usage?.output_tokens ?? 0,
       cacheRead: res.usage?.cache_read_input_tokens ?? 0,
@@ -130,4 +140,16 @@ export class Llm {
     if (res.is_error || res.structured_output == null) throw new EmptyOutputError(`claude -p falhou (${res.subtype ?? "sem saída estruturada"})`);
     return req.schema.parse(res.structured_output) as z.infer<S>;
   }
+}
+
+async function withImages(text: string | Anthropic.Beta.BetaContentBlockParam[], files: string[]): Promise<Anthropic.Beta.BetaContentBlockParam[]> {
+  const blocks: Anthropic.Beta.BetaContentBlockParam[] = [];
+  for (const [i, f] of files.entries()) {
+    blocks.push({ type: "text", text: `[${i + 1}]` });
+    blocks.push({
+      type: "image",
+      source: { type: "base64", media_type: f.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg", data: (await readFile(f)).toString("base64") },
+    });
+  }
+  return [...blocks, ...(typeof text === "string" ? [{ type: "text" as const, text }] : text)];
 }

@@ -20,6 +20,22 @@ function Preview({ conn, path, alt }: { conn: Conn; path: string; alt: string })
   return src ? <img className="img" src={src} alt={alt} /> : <div className="img placeholder shimmer" />;
 }
 
+function VideoPreview({ conn, path, poster }: { conn: Conn; path: string; poster?: string }) {
+  const [src, setSrc] = useState<string>();
+  const [cover, setCover] = useState<string>();
+  useEffect(() => {
+    let alive = true;
+    previewUrl(conn, path).then((u) => alive && setSrc(u)).catch(() => undefined);
+    if (poster) previewUrl(conn, poster).then((u) => alive && setCover(u)).catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [conn, path, poster]);
+  return src ? <video className="img video" src={src} poster={cover} controls playsInline loop preload="metadata" /> : <div className="img video placeholder shimmer" />;
+}
+
+const FORMAT_LABEL: Record<string, string> = { carousel: "carrossel", slideshow: "reel", story: "story", algoviz: "AlgoViz", text: "texto" };
+
 function timeLeft(iso?: string): string | null {
   if (!iso) return null;
   const ms = new Date(iso).getTime() - Date.now();
@@ -40,7 +56,9 @@ export function PackageCard({ conn, pkg, onDecide }: { conn: Conn; pkg: ContentP
   const [dx, setDx] = useState(0);
   const start = useRef<{ x: number; y: number } | null>(null);
 
-  const images = pkg.assets.filter((a) => a.kind === "image").sort((a, b) => a.order - b.order);
+  const video = pkg.assets.find((a) => a.kind === "video");
+  const images = video ? [] : pkg.assets.filter((a) => a.kind === "image").sort((a, b) => a.order - b.order);
+  const posterPath = pkg.assets.find((a) => a.role === "cover")?.path;
   const variant = pkg.variants.find((v) => v.id === tab);
   const left = timeLeft(pkg.expiresAt);
 
@@ -86,7 +104,11 @@ export function PackageCard({ conn, pkg, onDecide }: { conn: Conn; pkg: ContentP
         <div className="chips">
           {pkg.express && <span className="chip hot">🔥 tendência</span>}
           <span className="chip">{PILLAR_LABEL[pkg.pillar] ?? pkg.pillar}</span>
-          <span className="chip">{pkg.format}</span>
+          <span className="chip">{FORMAT_LABEL[pkg.format] ?? pkg.format}</span>
+          <span className="chip">estilo {pkg.style}</span>
+          {pkg.features.series && <span className="chip">{pkg.features.series}</span>}
+          {pkg.libraryRefs.length > 0 && <span className="chip ok">base: {pkg.libraryRefs.join(", ")}</span>}
+          {video?.durationSec && <span className="chip">{Math.round(video.durationSec)}s</span>}
           {pkg.qa && <span className="chip">QA {pkg.qa.score.toFixed(1)}</span>}
           {left && <span className={`chip ${pkg.express ? "hot" : ""}`}>expira em {left}</span>}
         </div>
@@ -94,6 +116,11 @@ export function PackageCard({ conn, pkg, onDecide }: { conn: Conn; pkg: ContentP
         {pkg.angle && <p className="muted">{pkg.angle}</p>}
       </header>
 
+      {video && (
+        <div className="media single">
+          <VideoPreview conn={conn} path={video.path} poster={posterPath} />
+        </div>
+      )}
       {images.length > 0 && (
         <div className="media">
           {images.map((a) => (

@@ -1,7 +1,7 @@
 import type { BrandRules, ContentPackage, Format, HookType, Idea, Pillar, Platform, Signal } from "@jarvis/core";
 import type { Llm } from "./client.ts";
-import { JudgeOutput, TriageOutput, WriterOutput } from "./outputs.ts";
-import { FORMAT_SPECS, HOOK_GUIDE, KIND_BY_FORMAT } from "./prompts.ts";
+import { JudgeOutput, TagOutput, TriageOutput, WriterOutput } from "./outputs.ts";
+import { FORMAT_SPECS, HOOK_GUIDE, KIND_BY_FORMAT, STYLE_GUIDE, VISUAL_GUIDE } from "./prompts.ts";
 
 export interface BrandContext {
   /** Saída de stableSystem(): idêntica entre chamadas para aproveitar o cache. */
@@ -26,7 +26,7 @@ Critérios:
 - pillarFit alto só se o Caio tem algo específico e interessante a dizer (não basta o tema ser popular).
 - risk alto para: tragédias, crimes, fofoca, conteúdo eleitoral direto, temas que exigem reproduzir material protegido, boatos sem fonte.
 - angle: a virada do Caio. Ex.: "filme novo da Marvel" → "a IA do vilão explicada por quem programa IA".
-- suggestedFormat: um de carousel, algoviz, text, story (os que existem hoje).
+- suggestedFormat: um de carousel, algoviz, slideshow (reel animado), text, story (os que existem hoje).
 
 Sinais:
 ${list}`,
@@ -52,6 +52,12 @@ export interface WriteRequest {
   /** Pedido de ajuste do Caio ou instrução do juiz da tentativa anterior. */
   feedback?: string;
   previous?: ContentPackage;
+  /** Catálogo da base (fotos/vídeos etiquetados) para escolher mídias pelo id. */
+  library?: string;
+  /** Estilo obrigatório (teste em massa / rotação); sem isso o roteirista escolhe. */
+  style?: "hud" | "post" | "quadro";
+  /** Direção extra (ex.: teste em massa: "use o cachorro"). */
+  brief?: string;
 }
 
 export async function writePackage(llm: Llm, brand: BrandContext, req: WriteRequest): Promise<WriterOutput> {
@@ -65,6 +71,13 @@ export async function writePackage(llm: Llm, brand: BrandContext, req: WriteRequ
     `Tarefa: criar um pacote de conteúdo.`,
     `Pilar: ${req.pillar}`,
     `Formato: ${req.format}\n${FORMAT_SPECS[req.format] ?? ""}`,
+    req.format === "text" ? "" : `${STYLE_GUIDE}${req.style ? `\nESTILO OBRIGATÓRIO: "${req.style}".` : ""}\n\n${VISUAL_GUIDE}`,
+    req.format === "text"
+      ? ""
+      : req.library
+        ? `BASE DE MÍDIA DO CAIO (use pelo id; prefira as menos usadas; não force mídia onde não combina, mas um pacote com a cara e a vida real do Caio performa melhor):\n${req.library}`
+        : `Base de mídia vazia: não use visuais com L<id>.`,
+    req.brief ? `DIREÇÃO ESPECÍFICA DESTE PACOTE: ${req.brief}` : "",
     `Tipo de gancho pedido: ${req.hookType}${req.exploration ? " (rodada de EXPLORAÇÃO: arrisque um ângulo diferente do usual)" : ""}\n${HOOK_GUIDE}`,
     `Gere exatamente uma variante para cada plataforma abaixo, com legenda nativa de cada rede:\n${platformLines}`,
     req.pillar === "geek" ? `Se o tema for Geek × negócios (e não Geek × computação), NÃO gere a variante linkedin.` : "",
@@ -85,11 +98,12 @@ export async function writePackage(llm: Llm, brand: BrandContext, req: WriteRequ
   });
 }
 
-export async function judgePackage(llm: Llm, brand: BrandContext, pkg: ContentPackage): Promise<JudgeOutput> {
+export async function judgePackage(llm: Llm, brand: BrandContext, pkg: ContentPackage, images: string[] = []): Promise<JudgeOutput> {
   const payload = {
     pillar: pkg.pillar,
     format: pkg.format,
     hook: pkg.chosenHook,
+    style: pkg.style,
     slides: pkg.slides,
     variants: pkg.variants.map((v) => ({ platform: v.platform, kind: v.kind, caption: v.caption, threadParts: v.threadParts })),
     sources: pkg.sources,
@@ -98,7 +112,8 @@ export async function judgePackage(llm: Llm, brand: BrandContext, pkg: ContentPa
     role: "judge",
     stableSystem: brand.system,
     schema: JudgeOutput,
-    user: `Tarefa: você é o revisor de qualidade (QA) antes do conteúdo chegar ao celular do Caio. Seja exigente.
+    images,
+    user: `Tarefa: você é o revisor de qualidade (QA) antes do conteúdo chegar ao celular do Caio. Seja exigente, como um gestor de social media de marca pessoal.
 
 Avalie:
 1. Violação de qualquer regra imutável → blocking = true.
@@ -107,6 +122,9 @@ Avalie:
 4. Soa como o Caio (bíblia) e não como texto genérico de IA?
 5. Cada legenda é nativa da sua rede? Erros de português?
 6. Entrega valor real (aprende algo, sente algo, quer salvar/compartilhar)?
+7. ${images.length ? "Olhe as imagens renderizadas: texto legível, nada cortado ou sobreposto, hierarquia clara, cara de marca pessoal (não de template genérico)? Problema visual grave → blocking." : "Os visuais escolhidos são variados e fazem sentido?"}
+
+Contexto das artes: o nome e o avatar no cabeçalho são a foto real do Caio e vêm da configuração da marca (não avalie como problema); a ausência do @ também é configuração pendente.
 
 score: 0–10. Abaixo de ${brand.rules.minBrandScore} não passa. Em fixInstructions, diga objetivamente o que mudar.
 
@@ -114,4 +132,49 @@ Pacote:
 ${JSON.stringify(payload, null, 2)}`,
   });
   return { ...out, score: Math.max(0, Math.min(10, out.score)) };
+}
+
+export interface MediaToTag {
+  id: string;
+  kind: "image" | "video";
+  /** Foto: 1 arquivo. Vídeo: quadros espalhados. */
+  files: string[];
+}
+
+/** Etiqueta mídias da base olhando as imagens (visão). */
+export async function tagMedia(llm: Llm, brand: BrandContext, items: MediaToTag[]): Promise<TagOutput["items"]> {
+  if (!items.length) return [];
+  const files: string[] = [];
+  const lines = items.map((it) => {
+    const refs = it.files.map((f) => {
+      files.push(f);
+      return `[${files.length}]`;
+    });
+    return `- id=${it.id} (${it.kind === "video" ? `vídeo, quadros ${refs.join(" ")}` : `foto ${refs[0]}`})`;
+  });
+  const out = await llm.structured({
+    role: "triage",
+    stableSystem: brand.system,
+    schema: TagOutput,
+    images: files,
+    user: `Tarefa: etiquetar as mídias que o Caio jogou na base, para o sistema reaproveitar nas artes, stories e reels.
+O Caio é o rapaz de cabelo escuro e barba (compare entre as fotos). Ele tem um cachorro (chow-chow).
+
+Para CADA mídia, preencha:
+- description: o que aparece, em uma frase objetiva.
+- people: caio | caio_e_outros | outros | ninguem.
+- hasDog: aparece o cachorro?
+- expression: expressão do Caio (pensativo, sério, sorrindo, surpreso, confiante, neutro) ou "-" se ele não aparece.
+- setting: estudio, carro, praia, natureza, casa, academia, aquario, cidade, escritorio, outro.
+- mood: clima da imagem em 1–3 palavras.
+- quality: 0 a 1 (nitidez, luz, enquadramento).
+- political: true se há QUALQUER símbolo, número, adesivo ou cor de partido/candidato (estamos em período eleitoral).
+- sensitive: true se aparece rosto identificável de outra pessoa, criança, documento, placa de carro, endereço ou tela com dado pessoal.
+- uses: avatar (rosto do Caio nítido, de frente), capa (forte para capa de carrossel), fundo (bom fundo para texto por cima), story, reacao (expressão que serve de reação/meme), broll (vídeo bom de fundo para reel), recorte (vale recortar o fundo: Caio ou cachorro bem destacado).
+- focus: ponto de interesse principal (x, y de 0 a 1) para enquadrar cortes.
+
+Mídias:
+${lines.join("\n")}`,
+  });
+  return out.items;
 }

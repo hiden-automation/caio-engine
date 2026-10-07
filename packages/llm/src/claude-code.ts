@@ -39,13 +39,15 @@ export const runClaudeCli: ClaudeCodeRunner = (args, stdin) =>
     child.stdin.end(stdin);
   });
 
-export function claudeCodeArgs(model: string, effort: string, system: string, schema: z.ZodType): string[] {
+export function claudeCodeArgs(model: string, effort: string, system: string, schema: z.ZodType, imageDirs: string[] = []): string[] {
+  // Com imagens, o modelo precisa da ferramenta Read (só leitura) para enxergá-las.
+  const tools = imageDirs.length ? ["--tools", "Read", "--allowedTools", "Read", ...imageDirs.flatMap((d) => ["--add-dir", d])] : ["--tools", ""];
   return [
     "-p",
     "--output-format", "json",
     "--model", model,
     "--effort", effort,
-    "--tools", "",
+    ...tools,
     "--system-prompt", system,
     "--json-schema", JSON.stringify(jsonSchemaFor(schema)),
     "--no-session-persistence",

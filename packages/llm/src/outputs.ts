@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Format, HookType, License, Pillar, Platform, VariantKind } from "@jarvis/core";
+import { Format, HookType, LibraryTags, License, Pillar, Platform, VariantKind } from "@jarvis/core";
 
 /*
  * Schemas de saída do LLM: todos os campos obrigatórios e sem defaults,
@@ -27,10 +27,9 @@ export type TriageOutput = z.infer<typeof TriageOutput>;
 export const SlideOut = z.object({
   title: z.string(),
   body: z.string(),
-  visual: z
-    .string()
-    .describe('um de: "capa", "texto", "lista", "codigo", "comparacao", "citacao", "numero", "cta", ou "sim:<geração>" no AlgoViz'),
-  code: z.string().describe('código curto quando visual="codigo"; senão ""'),
+  visual: z.string().describe("um dos visuais da lista (ex.: capa:L3, texto, chat, foto:L5, cta)"),
+  code: z.string().describe('código/terminal quando visual="codigo" ou "terminal"; senão ""'),
+  durationSec: z.number().describe("só reels: segundos da cena; 0 = automático"),
 });
 
 export const WriterOutput = z.object({
@@ -40,7 +39,8 @@ export const WriterOutput = z.object({
   hooks: z.array(z.string()).describe("3 ganchos alternativos para A/B"),
   chosenHook: z.string(),
   firstFrame: z.enum(["rosto", "texto", "simulacao", "tela"]),
-  series: z.string().describe('nome da série recorrente, ou ""'),
+  series: z.string().describe('nome curto da série recorrente (ex.: "LLM por dentro", "Geek × Negócios", "Evolução ao vivo", "Diário do JARVIS"), ou ""'),
+  style: z.enum(["hud", "post", "quadro"]),
   slides: z.array(SlideOut),
   variants: z.array(
     z.object({
@@ -61,3 +61,8 @@ export const JudgeOutput = z.object({
   fixInstructions: z.string().describe("o que o roteirista deve mudar na próxima tentativa; \"\" se nada"),
 });
 export type JudgeOutput = z.infer<typeof JudgeOutput>;
+
+export const TagOutput = z.object({
+  items: z.array(LibraryTags.extend({ id: z.string() })),
+});
+export type TagOutput = z.infer<typeof TagOutput>;

@@ -5,6 +5,8 @@ import { VisualTokens } from "@jarvis/visuals";
 
 export interface Ctx {
   store: FsStore;
+  /** Checkout da branch `library` do caio-data (mídias brutas + derivadas). */
+  libraryDir: string;
   budget: Budget;
   now: Date;
   dryRun: boolean;
@@ -28,6 +30,7 @@ export function createContext(env: NodeJS.ProcessEnv = process.env): Ctx {
   let brand: BrandContext | undefined;
   return {
     store,
+    libraryDir: resolve(env.LIBRARY_DIR ?? "../library"),
     budget,
     now: env.JARVIS_NOW ? new Date(env.JARVIS_NOW) : new Date(),
     dryRun: env.JARVIS_DRY_RUN === "1",

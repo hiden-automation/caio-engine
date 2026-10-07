@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@jarvis/core": "*",
+    "@jarvis/media": "*",
     "@jarvis/llm": "*",
     "@jarvis/optimizer": "*",
     "@jarvis/publishers": "*",

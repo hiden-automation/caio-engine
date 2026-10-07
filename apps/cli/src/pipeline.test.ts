@@ -23,10 +23,11 @@ const WRITER: WriterOutput = {
   chosenHook: "Deixei a evolução achar a rota",
   firstFrame: "simulacao",
   series: "Evolução ao vivo",
+  style: "hud",
   slides: [
-    { title: "Deixei a **evolução** achar a rota", body: "", visual: "capa", code: "" },
-    { title: "Geração 0", body: "caos", visual: "sim:0", code: "" },
-    { title: "Salva aí", body: "segue pra mais", visual: "cta", code: "" },
+    { title: "Deixei a **evolução** achar a rota", body: "", visual: "capa", code: "", durationSec: 0 },
+    { title: "Geração 0", body: "caos", visual: "sim:0", code: "", durationSec: 0 },
+    { title: "Salva aí", body: "segue pra mais", visual: "cta", code: "", durationSec: 0 },
   ],
   variants: [
     { platform: "instagram", kind: "carousel", caption: "Legenda IG #ia", threadParts: [] },
@@ -43,7 +44,7 @@ function fakeAnthropic(judgeScores: number[]): Anthropic {
     beta: {
       messages: {
         parse: async (params: { messages: { content: string }[] }) => {
-          const user = String(params.messages[0]!.content);
+          const user = JSON.stringify(params.messages[0]!.content);
           const parsed = user.includes("revisor de qualidade")
             ? { score: judgeScores.shift() ?? 9, blocking: false, issues: [], fixInstructions: "" }
             : WRITER;
@@ -83,6 +84,7 @@ async function makeCtx(now: Date, judgeScores: number[]): Promise<Ctx> {
   const rules = await store.brandRules();
   return {
     store,
+    libraryDir: join(root, "library"),
     budget,
     now,
     dryRun: false,

@@ -5,6 +5,7 @@ import { doctor } from "./doctor.ts";
 import { gc } from "./gc.ts";
 import { writeFeed } from "./feed.ts";
 import { initData } from "./init-data.ts";
+import { processLibrary } from "./library.ts";
 import { optimize } from "./optimize.ts";
 import { produce } from "./produce.ts";
 import { publish } from "./publish.ts";
@@ -15,8 +16,10 @@ import { trends } from "./trends.ts";
 const HELP = `jarvis <comando> [opções]
 
   init-data <pasta> [--force]   cria a estrutura do repositório caio-data
+  library                       base: etiqueta, recorta e prepara as mídias novas
   trends                        caça tendências → ideias (e via expressa)
-  produce [--count N] [--idea ID]  roteiro → arte → QA → fila do PWA
+  produce [--count N] [--idea ID] [--matrix] [--concurrency N]
+                                roteiro → arte → QA → fila do PWA (--matrix = teste em massa)
   reviews                       aplica decisões do PWA e agenda os aprovados
   publish                       publica o que está no horário (JARVIS_DRY_RUN=1 simula)
   snapshot                      coleta métricas (1h, 6h, 24h, 72h, 7d)
@@ -32,6 +35,8 @@ async function main(): Promise<void> {
     allowPositionals: true,
     options: {
       count: { type: "string" },
+      matrix: { type: "boolean" },
+      concurrency: { type: "string" },
       idea: { type: "string" },
       force: { type: "boolean" },
       refresh: { type: "boolean" },
@@ -53,11 +58,19 @@ async function main(): Promise<void> {
   const ctx = createContext();
   log("start", { cmd, dryRun: ctx.dryRun, platforms: ctx.platforms.join("+") });
   switch (cmd) {
+    case "library":
+      await processLibrary(ctx);
+      break;
     case "trends":
       await trends(ctx);
       break;
     case "produce":
-      await produce(ctx, { count: values.count ? Number(values.count) : undefined, ideaId: values.idea });
+      await produce(ctx, {
+        count: values.count ? Number(values.count) : undefined,
+        ideaId: values.idea,
+        matrix: values.matrix,
+        concurrency: values.concurrency ? Number(values.concurrency) : undefined,
+      });
       break;
     case "reviews":
       await applyReviews(ctx);

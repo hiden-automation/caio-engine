@@ -100,8 +100,50 @@ export const Slide = z.object({
   /** Dica visual para o Estúdio Visual (ex.: "diagrama", "codigo", "lista"). */
   visual: z.string().optional(),
   code: z.string().optional(),
+  /** Reels: segundos em tela desta cena (o render ajusta pelo tamanho do texto se faltar). */
+  durationSec: z.number().optional(),
 });
 export type Slide = z.infer<typeof Slide>;
+
+/** Etiquetas que a IA dá para cada mídia da base ("jogar na base"). */
+export const LibraryTags = z.object({
+  description: z.string(),
+  people: z.enum(["caio", "caio_e_outros", "outros", "ninguem"]),
+  hasDog: z.boolean(),
+  expression: z.string(),
+  setting: z.string(),
+  mood: z.string(),
+  quality: z.number(),
+  /** Símbolo/adesivo/número de partido ou candidato: nunca usar fora do pilar político. */
+  political: z.boolean(),
+  /** Rosto de terceiros identificável, criança, documento, placa, endereço: não usar. */
+  sensitive: z.boolean(),
+  uses: z.array(z.enum(["avatar", "capa", "fundo", "story", "reacao", "broll", "recorte"])),
+  /** Ponto de interesse (0–1) para enquadrar o corte. */
+  focus: z.object({ x: z.number(), y: z.number() }),
+});
+export type LibraryTags = z.infer<typeof LibraryTags>;
+
+export const LibraryItem = z.object({
+  id: z.string(),
+  raw: z.string(),
+  kind: z.enum(["image", "video"]),
+  addedAt: z.string(),
+  width: z.number().int(),
+  height: z.number().int(),
+  durationSec: z.number().optional(),
+  /** Caminhos relativos à branch `library`. */
+  derived: z.object({
+    full: z.string(),
+    frames: z.array(z.string()).default([]),
+    cutout: z.string().optional(),
+    /** Vídeo normalizado 1080×1920 (b-roll de reels). */
+    clip: z.string().optional(),
+  }),
+  tags: LibraryTags.optional(),
+  usage: z.object({ count: z.number().int().default(0), lastUsedAt: z.string().optional() }).default({ count: 0 }),
+});
+export type LibraryItem = z.infer<typeof LibraryItem>;
 
 export const QaResult = z.object({
   passed: z.boolean(),
@@ -158,6 +200,10 @@ export const ContentPackage = z.object({
   editRequests: z.array(z.object({ at: z.string(), note: z.string() })).default([]),
   history: z.array(HistoryEntry).default([]),
   features: Features,
+  /** Estilo visual: hud (escuro, assinatura), post (print de post), quadro (explicação desenhada). */
+  style: z.enum(["hud", "post", "quadro"]).default("hud"),
+  /** Itens da base (L1, L2…) usados nas artes: controla o desgaste. */
+  libraryRefs: z.array(z.string()).default([]),
   /** Parâmetros da simulação (AlgoViz), para re-renderizar idêntico. */
   simulation: z
     .object({ kind: z.literal("genetic_tsp"), seed: z.number().int(), generations: z.number().int() })

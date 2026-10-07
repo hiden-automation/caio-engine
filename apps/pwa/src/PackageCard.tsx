@@ -101,7 +101,9 @@ export function PackageCard({ conn, pkg, onDecide, mode: where = "pending" }: { 
 
   const videos = pkg.assets.filter((a) => a.kind === "video").sort((a, b) => a.order - b.order);
   const video = videos[0];
-  const images = video ? [] : pkg.assets.filter((a) => a.kind === "image").sort((a, b) => a.order - b.order);
+  // Carrossel com reel: mostra o vídeo e os slides. Capa do vídeo não entra na lista de slides.
+  const images = (pkg.format === "slideshow" || pkg.format === "react" ? [] : pkg.assets.filter((a) => a.kind === "image" && (a.role === "slide" || a.role === "story" || a.id === "img-1"))).sort((a, b) => a.order - b.order);
+  const tall = pkg.format === "story";
   const posterPath = pkg.assets.find((a) => a.role === "cover")?.path;
   const variant = pkg.variants.find((v) => v.id === tab);
   const left = where === "pending" ? timeLeft(pkg.expiresAt) : null;
@@ -189,7 +191,7 @@ export function PackageCard({ conn, pkg, onDecide, mode: where = "pending" }: { 
       )}
       {videos.length > 1 && <p className="hint">{videos.length} stories em sequência · deslize →</p>}
       {images.length > 0 && (
-        <div className="media">
+        <div className={`media${tall ? " single tall" : ""}`}>
           {images.map((a) => (
             <Preview key={a.id} conn={conn} path={a.path} alt={`slide ${a.order + 1}`} />
           ))}

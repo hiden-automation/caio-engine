@@ -43,3 +43,8 @@ export async function avatarFromCutout(cutout: string, dst: string, size = 400):
     .jpeg({ quality: 90 })
     .toFile(dst);
 }
+
+/** Story livre: a foto ocupando a tela 9:16, recorte guiado pelo que chama atenção. */
+export async function storyFrame(src: string, dst: string): Promise<void> {
+  await sharp(src).rotate().resize(1080, 1920, { fit: "cover", position: sharp.strategy.attention }).jpeg({ quality: 90 }).toFile(dst);
+}

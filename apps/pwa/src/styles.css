@@ -165,6 +165,10 @@ textarea:focus, input:focus { outline: 2px solid var(--accent); outline-offset: 
 .group summary::before{content:"▸ ";}
 .group[open] summary::before{content:"▾ ";}
 .thumb-wrap{position:relative}
-.thumb-del{position:absolute;top:6px;right:6px;width:30px;height:30px;border-radius:50%;border:0;background:#000b;color:#fff;font-size:14px;line-height:30px;padding:0;cursor:pointer}
+.thumb-del{z-index:5;position:absolute;top:6px;right:6px;width:30px;height:30px;border-radius:50%;border:0;background:#000b;color:#fff;font-size:14px;line-height:30px;padding:0;cursor:pointer}
 .editing{background:var(--surface);border:1px dashed color-mix(in srgb,var(--accent) 50%,transparent);border-radius:14px;padding:12px 14px;font-size:14px}
 .editing b{display:block;margin-bottom:2px}
+/* Vídeo e story aparecem inteiros (9:16), sem cortar e sem precisar expandir. */
+video.img{object-fit:contain;background:#000}
+.media .video{flex:0 0 62%;width:62%;aspect-ratio:9/16;height:auto}
+.media.tall .img{flex:0 0 auto;width:min(100%,360px);aspect-ratio:9/16;object-fit:contain;background:#000}

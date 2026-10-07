@@ -1,5 +1,5 @@
 import { createHash, randomInt } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -21,7 +21,7 @@ import {
   type VariantKind,
 } from "@jarvis/core";
 import { judgePackage, KIND_BY_FORMAT, RefusedError, writePackage, type WriterOutput } from "@jarvis/llm";
-import { clipFrames, encodeReel, framesAt, mixAudio, narrate, writeTrack, type AudioCue } from "@jarvis/media";
+import { clipFrames, encodeReel, framesAt, mixAudio, narrate, storyFrame, writeTrack, type AudioCue } from "@jarvis/media";
 import { allocateDay, IMPLEMENTED_FORMATS, type Slot } from "@jarvis/optimizer";
 import { runGeneticTsp, SP_BAIRROS, type GaRun } from "@jarvis/sims";
 import { reelTiming, renderReel, Renderer, sceneDuration, type Look, type MediaRef, type Style, type VisualTokens } from "@jarvis/visuals";
@@ -258,32 +258,23 @@ async function render(ctx: Ctx, env: Env, pkg: ContentPackage, sim?: GaRun, reac
   }
 
   if (pkg.format === "story") {
-    // Sequência de stories: cada quadro é um vídeo curto, narrado, com legenda e movimento.
-    const work = await mkdtemp(join(tmpdir(), "jarvis-story-"));
-    try {
-      const assets: Asset[] = [];
-      const slides: ContentPackage["slides"] = [];
-      let voiced = false;
-      let total = 0;
-      for (const [i, sl] of pkg.slides.slice(0, 5).entries()) {
-        const v = await videoFrom(ctx, env, pkg, [sl], look, work, { tokens, outDir, prefix: `story-${i + 1}`, forRender, minScene: 5, seedOffset: i + 1 });
-        slides.push(...v.slides);
-        voiced ||= v.voiced;
-        total += v.reel.durationSec;
-        assets.push(
-          { id: `video-${i + 1}`, kind: "video", path: assetPath(v.reel.video), role: "story", order: i, width: 1080, height: 1920, durationSec: v.reel.durationSec },
-          { id: `capa-${i + 1}`, kind: "image", path: assetPath(v.reel.cover), role: "cover", order: 100 + i, width: 1080, height: 1920 },
-        );
-      }
-      const videoIds = assets.filter((a) => a.kind === "video").map((a) => a.id);
-      const variants = pkg.variants.map((x) => ({ ...x, assetIds: videoIds, aiLabel: voiced }));
-      return {
-        pkg: { ...pkg, slides, assets, variants, features: { ...pkg.features, durationSec: Math.round(total), voice: voiced ? "locutor" : "nenhuma" } },
-        review: assets.filter((a) => a.role === "cover").map((a) => join(ctx.store.previewsDir, a.path)),
-      };
-    } finally {
-      await rm(work, { recursive: true, force: true });
+    // Story livre: só a foto (da base ou do assunto), sem texto nenhum.
+    const sl = pkg.slides[0]!;
+    const [kind, id] = (sl.visual ?? "").split(":");
+    const it = env.library.find((x) => x.id === id);
+    // Sem foto escolhida: a foto da base menos usada.
+    const spare = env.library.filter((x) => usable(x) && x.kind === "image").sort((x, y) => (env.recentUses.get(x.id) ?? 0) - (env.recentUses.get(y.id) ?? 0))[0];
+    const src = kind === "foto" && it ? join(ctx.libraryDir, it.derived.full) : sl.image ? join(ctx.store.previewsDir, sl.image.path) : spare ? join(ctx.libraryDir, spare.derived.full) : undefined;
+    await mkdir(outDir, { recursive: true });
+    const file = join(outDir, "story-1.jpg");
+    if (src) await storyFrame(src, file);
+    else {
+      // Base vazia: o story desenhado (texto em card), como antes.
+      const r = await env.renderer.render(forRender([sl]), { canvas: "story", tokens, look, outDir, prefix: "story", pdf: false });
+      await rename(r.images[0]!, file);
     }
+    const assets: Asset[] = [{ id: "img-1", kind: "image", path: assetPath(file), role: "story", order: 0, width: 1080, height: 1920 }];
+    return { pkg: { ...pkg, assets, variants: pkg.variants.map((x) => ({ ...x, assetIds: ["img-1"] })) }, review: [file] };
   }
 
   const result = await env.renderer.render(forRender(pkg.slides), {
@@ -305,14 +296,34 @@ async function render(ctx: Ctx, env: Env, pkg: ContentPackage, sim?: GaRun, reac
     height: 1350,
   }));
   if (result.pdf) assets.push({ id: "pdf", kind: "pdf", path: assetPath(result.pdf), role: "document", order: 0 });
-  const imageIds = assets.filter((a) => a.kind === "image").map((a) => a.id);
+
+  // Todo carrossel vira também um reel: os mesmos slides, narrados, com legenda.
+  let reelVariant: ContentPackage["variants"][number] | undefined;
+  const igCarousel = pkg.variants.find((v) => v.platform === "instagram" && v.kind === "carousel");
+  if (igCarousel && process.env.JARVIS_CAROUSEL_REEL !== "0" && !pkg.variants.some((v) => v.kind === "reel")) {
+    const work = await mkdtemp(join(tmpdir(), "jarvis-c2r-"));
+    try {
+      const scenes = pkg.slides.map((sl, i) => ({ ...sl, visual: "slideimg", image: { path: assetPath(result.images[i]!), credit: "" }, durationSec: 0 }));
+      const v = await videoFrom(ctx, env, pkg, scenes, look, work, { tokens, outDir, prefix: "reel", forRender, minScene: 2.8 });
+      assets.push(
+        { id: "video", kind: "video", path: assetPath(v.reel.video), role: "reel", order: 0, width: 1080, height: 1920, durationSec: v.reel.durationSec },
+        { id: "reel-capa", kind: "image", path: assetPath(v.reel.cover), role: "cover", order: 200, width: 1080, height: 1920 },
+      );
+      reelVariant = { ...igCarousel, id: "instagram-reel", kind: "reel", assetIds: ["video", "reel-capa"], aiLabel: v.voiced };
+    } catch (err) {
+      logError("produce.carousel_reel", err, { pkg: pkg.id });
+    } finally {
+      await rm(work, { recursive: true, force: true });
+    }
+  }
+  const imageIds = assets.filter((a) => a.kind === "image" && a.id !== "reel-capa").map((a) => a.id);
   const variants = pkg.variants.map((v) => ({
     ...v,
     assetIds: v.kind === "document" ? ["pdf"] : v.kind === "text" || v.kind === "thread" ? [] : v.platform === "x" ? imageIds.slice(0, 4) : imageIds,
   }));
   const imgs = result.images;
   const review = [...new Set([imgs[0], imgs[Math.floor(imgs.length / 2)], imgs[imgs.length - 2]].filter((x): x is string => !!x))];
-  return { pkg: { ...pkg, assets, variants }, review };
+  return { pkg: { ...pkg, assets, variants: reelVariant ? [...variants, reelVariant] : variants }, review };
 }
 
 function applyDraft(pkg: ContentPackage, draft: WriterOutput, platforms: Platform[], env: Env, forcedStyle?: Style): ContentPackage {

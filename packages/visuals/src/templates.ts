@@ -489,6 +489,13 @@ export function slideHtml(slide: Slide, ctx: SlideContext): string {
 export function reelSlideHtml(slide: Slide, ctx: SlideContext): string {
   const [kind = "texto", arg] = (slide.visual ?? "texto").split(":");
   if (kind === "react") return slideHtml(slide, ctx);
+  if (kind === "slideimg" && slide.image) {
+    // Carrossel virando reel: o slide inteiro no alto, fundo desfocado dele mesmo, base livre para a legenda.
+    return `<section class="slide ${ctx.canvas} ${ctx.look.style} rs fullbleed">
+      <div class="bleed"><img class="rs-blur" src="${slide.image.path}" alt=""></div>
+      <div class="r-stage rs-slide"><img src="${slide.image.path}" alt=""></div>
+    </section>`;
+  }
   const m = mediaFor(ctx, arg);
   const demo = (s: Slide) => body({ ...s, title: "" }, ctx);
   const bigAvatar = `<div class="r-ava">${avatarHtml(ctx, "big-av")}${handleOf(ctx.tokens) ? `<div class="handle-big">${esc(handleOf(ctx.tokens))}</div>` : ""}</div>`;
@@ -600,6 +607,9 @@ export function reelCss(t: VisualTokens, look: Look): string {
   .rs .talker{right:-60px;bottom:0;height:770px}
   .rs .bubble{right:300px;font-size:46px}
   .rs .credit{top:auto;bottom:240px}
+  .rs .rs-blur{width:100%;height:100%;object-fit:cover;filter:blur(38px) brightness(.45);transform:scale(1.15)}
+  .rs .rs-slide{top:150px;height:1230px;left:60px;right:60px}
+  .rs .rs-slide img{width:100%;height:100%;object-fit:contain;border-radius:28px;box-shadow:0 30px 80px #000a;clip-path:inset(0 0 8.5% 0 round 28px)}
   .rs .pb-text{font-size:52px;line-height:1.4}.rs .pb-head{font-size:26px}.rs .pb-send{font-size:28px}
   .rs .node{font-size:52px;padding:34px 40px}.rs .node b{font-size:34px}
   .rs .msg{font-size:50px}.rs .list li,.rs .check li{font-size:58px}.rs .col{font-size:46px}

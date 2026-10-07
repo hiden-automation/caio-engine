@@ -1,3 +1,5 @@
+// Testes simulados: sem gerar o reel do carrossel (voz + vídeo são lentos e usam rede).
+process.env.JARVIS_CAROUSEL_REEL = "0";
 import { mkdtemp, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

@@ -106,11 +106,11 @@ export async function writePackage(llm: Llm, brand: BrandContext, req: WriteRequ
 
 export async function judgePackage(llm: Llm, brand: BrandContext, pkg: ContentPackage, images: string[] = []): Promise<JudgeOutput> {
   const FORMAT_LABEL: Record<string, string> = {
-    carousel: "carrossel (imagens)",
+    carousel: "carrossel (imagens) que também vira reel narrado; a narração de cada slide precisa ser coesa",
     algoviz: "carrossel com simulação",
     slideshow: "reel narrado (vídeo com locutor, legenda e trilha)",
     react: "reel react em tela dividida (vídeo de terceiro em cima, Caio comentando embaixo)",
-    story: "story (1 imagem vertical)",
+    story: "story livre (só uma foto, sem texto de propósito): avalie apenas se a imagem é bonita, nítida, adequada à marca e combina com os interesses do Caio; não cobre mensagem, gancho nem texto",
     text: "texto",
   };
   const payload = {

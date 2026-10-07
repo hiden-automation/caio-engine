@@ -88,8 +88,9 @@ const REEL_SCREEN = `TELA DO VÍDEO (3 faixas fixas: manchete em cima, visual no
 - Pelo menos 2 cenas com imagem real (imagem/foto/video).`;
 
 export const FORMAT_SPECS: Record<string, string> = {
-  carousel: `CARROSSEL: 6 a 8 slides. Slide 1 = capa com o gancho (promessa clara). Slides do meio: uma ideia por slide, na ordem lógica; até 30 palavras no body. Penúltimo: a conclusão (o que muda para a pessoa). Último: "cta". Em "narration" use "" (carrossel não tem narração).`,
-  algoviz: `ALGOVIZ (carrossel com simulação real de algoritmo genético): 6 a 8 slides. Conte a história da execução com os DADOS FORNECIDOS — números exatamente iguais aos dados. Explique o algoritmo de forma simples (população, seleção, cruzamento, mutação) e a curiosidade principal (por que funciona). Use "sim:<geração>" nos slides que mostram a rota. Último: "cta". "narration" = "".`,
+  carousel: `CARROSSEL: 6 a 8 slides. Slide 1 = capa com o gancho (promessa clara). Slides do meio: uma ideia por slide, na ordem lógica; até 30 palavras no body. Penúltimo: a conclusão (o que muda para a pessoa). Último: "cta".
+- O carrossel também vira um REEL (os mesmos slides em vídeo, com locutor e legenda): em "narration" escreva o que o locutor fala em cada slide, 1 ou 2 frases curtas (8 a 20 palavras), complementando o slide sem só repetir o texto. A narração inteira, lida em sequência, forma um texto coeso. Escreva nomes do jeito certo (ChatGPT, IA); a pronúncia é ajustada sozinha.`,
+  algoviz: `ALGOVIZ (carrossel com simulação real de algoritmo genético): 6 a 8 slides. Conte a história da execução com os DADOS FORNECIDOS — números exatamente iguais aos dados. Explique o algoritmo de forma simples (população, seleção, cruzamento, mutação) e a curiosidade principal (por que funciona). Use "sim:<geração>" nos slides que mostram a rota. Último: "cta". Também vira reel: em "narration" escreva 1 ou 2 frases curtas por slide (8 a 20 palavras) para o locutor.`,
   slideshow: `REEL NARRADO (vídeo vertical de 30 a 45 s com locutor, legenda sincronizada e trilha). 7 a 9 cenas curtas (4 a 5 s cada: ritmo prende). A NARRAÇÃO INTEIRA (somando as cenas) tem de 80 a 115 palavras — conte; reel longo perde a audiência:
 - Cena 1 = gancho: title até 7 palavras com a promessa; narração começa direto no assunto. Use "capa:L<id>" ou "capa:img" (com imageQuery) para a capa ter rosto ou o assunto.
 - Cenas do meio: uma ideia por cena; a narração explica e a tela mostra.
@@ -105,15 +106,11 @@ ${NARRATION}
 - Última: "cta".
 - O trecho de terceiro é no máximo 40% do vídeo. Crédito ao autor é automático; cite o autor na legenda.
 ${NARRATION}`,
-  story: `SEQUÊNCIA DE STORIES (3 a 5 quadros; cada quadro vira um vídeo curto de 5 a 10 s com locutor, legenda e movimento). Uma mensagem só, contada em sequência, tom de conversa próxima (story é mais íntimo que o feed). Escolha UM tipo:
-  a) curiosidade rápida: quadro 1 pergunta curiosa → 1 a 2 quadros com a resposta (demonstração ou imagem) → fechamento "responde aqui o que você achou" ou "o post completo está no perfil";
-  b) bastidor: foto/vídeo do Caio da base ("foto:L<id>"/"video:L<id>") mostrando o momento + o que ele está aprendendo/fazendo + pergunta para a audiência;
-  c) pergunta para a audiência: contexto curto → a pergunta clara → "me responde aqui no direct";
-  d) reflexão (fé, trabalho, domingo): frase de abertura → a ideia → aplicação prática.
-- Cada quadro: title = manchete até 7 palavras; visual que mostra algo (imagem com imageQuery, foto:L<id>, video:L<id>, eu:L<id>, prompt, chat, formula, numero, lista curta); narration de 8 a 20 palavras.
-- PROIBIDO: "enquete", "toca", "vota", "sticker", "link", "arrasta pra cima" (a publicação automática não coloca figurinhas). Interação é sempre "me responde aqui" (vira mensagem no direct).
-- durationSec = 0. Variante instagram kind "story" com caption "".
-${NARRATION}`,
+  story: `STORY LIVRE (só uma foto, SEM texto nenhum na imagem): 1 slide. Escolha UMA foto bonita e com a cara do Caio:
+  - uma foto da base com "foto:L<id>" (momento do dia, viagem, cachorro, natureza, academia), OU
+  - uma imagem de algo de que ele gosta com "imagem" e imageQuery em INGLÊS (Star Wars, Marvel, Harry Potter, tecnologia, setup, aquário plantado, natureza, livro, café).
+- title = "" e body = "" (a imagem vai pura). narration = "". durationSec = 0.
+- Não repita a mesma foto ou o mesmo assunto dos stories recentes. Variante instagram kind "story" com caption "".`,
   text: `TEXTO: sem slides (slides = []). X: kind "text" (≤ 280 caracteres) ou "thread". Threads: kind "text" (≤ 500). LinkedIn: kind "text", 600 a 1300 caracteres.`,
 };
 
